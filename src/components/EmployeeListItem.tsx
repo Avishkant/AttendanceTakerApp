@@ -17,7 +17,11 @@ const EmployeeListItem: React.FC<Props> = ({ name, email, role, onManage }) => {
       </View>
       <View style={styles.right}>
         <Text style={styles.role}>{role}</Text>
-        <TouchableOpacity onPress={onManage} style={styles.manageBtn} accessibilityRole="button">
+        <TouchableOpacity
+          onPress={onManage}
+          style={styles.manageBtn}
+          accessibilityRole="button"
+        >
           <Text style={{ color: '#fff' }}>Manage</Text>
         </TouchableOpacity>
       </View>
@@ -26,12 +30,29 @@ const EmployeeListItem: React.FC<Props> = ({ name, email, role, onManage }) => {
 };
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#eee' },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
   name: { fontWeight: '700' },
   email: { color: '#666' },
   right: { alignItems: 'flex-end' },
-  role: { backgroundColor: '#eee', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, marginBottom: 6 },
-  manageBtn: { backgroundColor: '#4f46e5', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 },
+  role: {
+    backgroundColor: '#eee',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginBottom: 6,
+  },
+  manageBtn: {
+    backgroundColor: '#4f46e5',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
 });
 
 export default EmployeeListItem;

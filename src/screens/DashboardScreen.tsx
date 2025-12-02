@@ -15,8 +15,42 @@ const DashboardScreen: React.FC = () => {
   const load = async () => {
     setRefreshing(true);
     try {
-      const res = await api.get('/api/attendance/stats');
-      if (res?.data?.success) setStats(res.data.data);
+      // Try server-side stats endpoint first
+      let res = null as any;
+      try {
+        res = await api.get('/api/attendance/stats');
+      } catch {
+        res = null;
+      }
+      if (res && res?.data?.success) {
+        setStats(res.data.data);
+      } else {
+        // Fallback: compute basic stats from attendance history for this month
+        const now = new Date();
+        const from = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          1,
+        ).toISOString();
+        const to = now.toISOString();
+        const hist = await api.get('/api/attendance/history', {
+          params: { from, to, limit: 500 },
+        });
+        const records = hist?.data?.data || [];
+        const daysSet = new Set<string>();
+        records.forEach((r: any) => {
+          const d = new Date(r.timestamp);
+          daysSet.add(d.toISOString().slice(0, 10));
+        });
+        const last = records.length
+          ? new Date(records[0].timestamp).toLocaleString()
+          : null;
+        setStats({
+          daysThisMonth: daysSet.size,
+          lastAttendance: last,
+          onTimePercent: null,
+        });
+      }
     } catch (e) {
       // ignore
     } finally {

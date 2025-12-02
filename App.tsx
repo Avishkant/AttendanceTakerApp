@@ -16,22 +16,12 @@ import {
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { useEffect, useState } from 'react';
-import api from './src/api/client';
+import React from 'react';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import Login from './src/screens/Login';
 import EmployeePortal from './src/screens/EmployeePortal';
 import AdminPortal from './src/screens/AdminPortal';
-
-const DebugPanel: React.FC<{ user: any; portalName: string }> = ({ user, portalName }) => {
-  return (
-    <View style={{ padding: 8, backgroundColor: '#fff3', borderBottomWidth: 1, borderColor: '#eee' }}>
-      <Text style={{ fontSize: 12, fontWeight: '700' }}>Debug</Text>
-      <Text style={{ fontSize: 12 }}>Portal: {portalName}</Text>
-      <Text style={{ fontSize: 12 }}>User: {user ? JSON.stringify(user) : 'null'}</Text>
-    </View>
-  );
-};
+import Toast from 'react-native-toast-message';
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
@@ -41,6 +31,7 @@ function App() {
       <SafeAreaProvider>
         <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
         <Root />
+        <Toast />
       </SafeAreaProvider>
     </AuthProvider>
   );
@@ -70,35 +61,11 @@ function Root() {
 function MainApp() {
   // safeAreaInsets removed (was only used by removed NewAppScreen)
   const { user } = useAuth();
-  const [serverMsg, setServerMsg] = useState<string | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-    api
-      .get('/')
-      .then(res => {
-        if (!mounted) return;
-        setServerMsg(res?.data?.message ?? 'OK');
-      })
-      .catch(err => {
-        if (!mounted) return;
-        setServerMsg(`Error: ${err.message}`);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  // optional server health check removed - not needed at runtime
 
   const role = (user?.role || 'employee').toLowerCase();
-  const portalName = role === 'admin' ? 'AdminPortal' : 'EmployeePortal';
   return (
     <View style={styles.container}>
-      <DebugPanel user={user} portalName={portalName} />
-      <View style={{ padding: 8 }}>
-        <Text style={{ fontSize: 14, color: '#333' }}>
-          Server: {serverMsg ?? 'Checking...'}
-        </Text>
-      </View>
       {role === 'admin' ? <AdminPortal /> : <EmployeePortal />}
     </View>
   );

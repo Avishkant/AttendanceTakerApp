@@ -14,7 +14,9 @@ const RequestsScreen: React.FC = () => {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const action = async (id: string, act: 'approve' | 'reject' | 'delete') => {
     try {
@@ -31,31 +33,61 @@ const RequestsScreen: React.FC = () => {
 
   return (
     <View style={{ flex: 1, padding: 12 }}>
-      <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 12 }}>Device Change Requests</Text>
-      <FlatList data={requests} keyExtractor={i => i._id || i.id} renderItem={({ item }) => (
-        <View style={styles.row}>
-          <View>
-            <Text style={{ fontWeight: '700' }}>{item.newDeviceId}</Text>
-            <Text style={{ color: '#666' }}>{item.user?.name} · {new Date(item.requestedAt).toLocaleString()}</Text>
+      <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 12 }}>
+        Device Change Requests
+      </Text>
+      <FlatList
+        data={requests}
+        keyExtractor={i => i._id || i.id}
+        renderItem={({ item }) => (
+          <View style={styles.row}>
+            <View>
+              <Text style={{ fontWeight: '700' }}>{item.newDeviceId}</Text>
+              <Text style={{ color: '#666' }}>
+                {item.user?.name} ·{' '}
+                {new Date(item.requestedAt).toLocaleString()}
+              </Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={{ marginBottom: 6 }}>{item.status}</Text>
+              {item.status === 'pending' ? (
+                <View style={{ flexDirection: 'row' }}>
+                  <Button
+                    title="Approve"
+                    onPress={() => action(item._id || item.id, 'approve')}
+                  />
+                  <View style={{ width: 8 }} />
+                  <Button
+                    title="Reject"
+                    onPress={() => action(item._id || item.id, 'reject')}
+                    color="#ef4444"
+                  />
+                </View>
+              ) : (
+                <Button
+                  title="Delete"
+                  onPress={() => action(item._id || item.id, 'delete')}
+                />
+              )}
+            </View>
           </View>
-          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={{ marginBottom: 6 }}>{item.status}</Text>
-            {item.status === 'pending' ? (
-              <View style={{ flexDirection: 'row' }}>
-                <Button title="Approve" onPress={() => action(item._id || item.id, 'approve')} />
-                <View style={{ width: 8 }} />
-                <Button title="Reject" onPress={() => action(item._id || item.id, 'reject')} color="#ef4444" />
-              </View>
-            ) : (
-              <Button title="Delete" onPress={() => action(item._id || item.id, 'delete')} />
-            )}
-          </View>
-        </View>
-      )} ListEmptyComponent={() => <Text style={{ padding: 12 }}>No requests</Text>} />
+        )}
+        ListEmptyComponent={() => (
+          <Text style={{ padding: 12 }}>No requests</Text>
+        )}
+      />
     </View>
   );
 };
 
-const styles = StyleSheet.create({ row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#eee' } });
+const styles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+});
 
 export default RequestsScreen;
