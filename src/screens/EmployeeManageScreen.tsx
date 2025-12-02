@@ -47,6 +47,7 @@ const EmployeeManageScreen: React.FC = () => {
   const [resetting, setResetting] = useState(false);
   const [showSavedCard, setShowSavedCard] = useState(false);
   const [showDeregisterConfirm, setShowDeregisterConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // Date/time picker state (using react-native-date-picker)
   const [showPicker, setShowPicker] = useState(false);
   const [pickerTarget, setPickerTarget] = useState<
@@ -215,24 +216,22 @@ const EmployeeManageScreen: React.FC = () => {
   };
 
   const remove = async () => {
-    Alert.alert('Confirm', 'Delete user?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            const res = await api.delete(`/api/admin/employees/${employeeId}`);
-            if (res?.data?.success) {
-              Alert.alert('Deleted');
-              navigation.goBack();
-            }
-          } catch (e: any) {
-            Alert.alert('Error', e?.message || 'Failed');
-          }
-        },
-      },
-    ]);
+    // show modal confirm card instead of system alert
+    setShowDeleteConfirm(true);
+  };
+
+  const performDelete = async () => {
+    setShowDeleteConfirm(false);
+    try {
+      const res = await api.delete(`/api/admin/employees/${employeeId}`);
+      if (res?.data?.success) {
+        // show success then navigate back
+        setShowSavedCard(true);
+        setTimeout(() => navigation.goBack(), 700);
+      }
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed');
+    }
   };
 
   if (loading)
@@ -527,6 +526,18 @@ const EmployeeManageScreen: React.FC = () => {
         cancelText="Cancel"
         onCancel={() => setShowDeregisterConfirm(false)}
         onConfirm={performDeregister}
+      />
+
+      <ConfirmCard
+        visible={showDeleteConfirm}
+        title="Delete Employee"
+        subtitle="This will permanently delete the employee. This action cannot be undone."
+        variant="danger"
+        iconName="delete"
+        confirmText="Delete"
+        cancelText="Cancel"
+        onCancel={() => setShowDeleteConfirm(false)}
+        onConfirm={performDelete}
       />
     </ScrollView>
   );

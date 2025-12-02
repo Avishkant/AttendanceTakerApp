@@ -1,5 +1,13 @@
-import React from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  Modal,
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Animated,
+  Easing,
+} from 'react-native';
 
 type Props = {
   visible: boolean;
@@ -10,6 +18,7 @@ type Props = {
   cancelText?: string;
   onConfirm?: () => void;
   onCancel?: () => void;
+  iconName?: string; // optional vector icon name (MaterialIcons)
 };
 
 const bgFor = (v: Props['variant']) => {
@@ -47,23 +56,132 @@ export default function ConfirmCard({
   cancelText = 'Cancel',
   onConfirm,
   onCancel,
+  iconName,
 }: Props) {
+  const scale = useRef(new Animated.Value(0.96)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(12)).current;
+  const [mounted, setMounted] = useState(visible);
+
+  useEffect(() => {
+    let mountedFlag = true;
+    if (visible) {
+      setMounted(true);
+      Animated.parallel([
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 260,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.spring(scale, {
+          toValue: 1,
+          friction: 10,
+          useNativeDriver: true,
+        }),
+        Animated.timing(translateY, {
+          toValue: 0,
+          duration: 260,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: 200,
+          easing: Easing.in(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(scale, {
+          toValue: 0.98,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(translateY, {
+          toValue: 8,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        if (mountedFlag) setMounted(false);
+      });
+    }
+    return () => {
+      mountedFlag = false;
+    };
+  }, [visible, opacity, scale, translateY]);
+
+  // Try to load MaterialIcons if available; fall back to checkmark text
+  let Icon: any = null;
+  try {
+    // require inside try so bundler won't fail if library missing — runtime fallback handled
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const pkg = require('react-native-vector-icons/MaterialIcons');
+    Icon = pkg && (pkg.default || pkg);
+  } catch {
+    Icon = null;
+  }
+
+  // Auto-dismiss success cards after a short delay if an onConfirm handler is present
+  useEffect(() => {
+    if (visible && variant === 'success' && onConfirm) {
+      const t = setTimeout(() => onConfirm(), 1400);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [visible, variant, onConfirm]);
+
+  if (!mounted) return null;
+
   return (
-    <Modal visible={visible} transparent animationType="fade">
+    <Modal visible={visible} transparent animationType="none">
       <View style={styles.backdrop}>
-        <View style={[styles.card, { backgroundColor: bgFor(variant) }]}>
+        <Animated.View
+          style={[
+            styles.card,
+            {
+              backgroundColor: bgFor(variant),
+              opacity,
+              transform: [{ translateY }, { scale }],
+            },
+          ]}
+        >
           <View style={styles.headerRow}>
             <View
               style={[styles.iconWrap, { borderColor: accentFor(variant) }]}
             >
-              <Text style={[styles.icon, { color: accentFor(variant) }]}>
-                ✓
-              </Text>
+              {Icon ? (
+                <Icon
+                  name={
+                    iconName ||
+                    (variant === 'success'
+                      ? 'check-circle'
+                      : variant === 'danger'
+                      ? 'warning'
+                      : 'help')
+                  }
+                  size={22}
+                  color={accentFor(variant)}
+                />
+              ) : (
+                <Text style={[styles.icon, { color: accentFor(variant) }]}>
+                  {variant === 'success'
+                    ? '✓'
+                    : variant === 'danger'
+                    ? '!'
+                    : '?'}
+                </Text>
+              )}
             </View>
-            <View style={{ flex: 1 }}>
+
+            <View style={styles.contentWrap}>
               <Text style={styles.title}>{title}</Text>
               {subtitle ? (
-                <Text style={styles.subtitle}>{subtitle}</Text>
+                <Text style={styles.subtitle} numberOfLines={4}>
+                  {subtitle}
+                </Text>
               ) : null}
             </View>
           </View>
@@ -87,7 +205,7 @@ export default function ConfirmCard({
               </TouchableOpacity>
             ) : null}
           </View>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -102,14 +220,17 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   card: {
-    width: '100%',
     maxWidth: 520,
+    minWidth: 320,
     borderRadius: 12,
-    padding: 16,
+    padding: 18,
     shadowColor: '#000',
     shadowOpacity: 0.12,
     shadowRadius: 20,
     elevation: 8,
+  },
+  contentWrap: {
+    flex: 1,
   },
   headerRow: {
     flexDirection: 'row',
