@@ -20,8 +20,7 @@ const EmployeePortal: React.FC = () => {
   return (
     <Tab.Navigator
       screenOptions={({ navigation }) => ({
-        headerShown: true,
-        headerRight: renderLogout,
+        headerShown: false,
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} />

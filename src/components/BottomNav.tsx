@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import Icon from './Icon';
 import theme from '../theme';
+import { useAuth } from '../contexts/AuthContext';
 
 type NavItem = {
   key: string;
@@ -22,6 +23,8 @@ type Props = {
 };
 
 const BottomNav: React.FC<Props> = ({ onNavigate }) => {
+  const { signOut } = useAuth();
+
   return (
     <View style={styles.container} pointerEvents="box-none">
       <View style={styles.nav}>
@@ -37,6 +40,15 @@ const BottomNav: React.FC<Props> = ({ onNavigate }) => {
             <Text style={styles.label}>{it.label}</Text>
           </TouchableOpacity>
         ))}
+
+        <TouchableOpacity
+          style={styles.logoutItem}
+          accessibilityRole="button"
+          accessibilityLabel="Logout"
+          onPress={() => signOut()}
+        >
+          <Icon name="log-out" size={18} color={theme.COLORS.white} />
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -64,6 +76,11 @@ const styles = StyleSheet.create({
   },
   item: { flex: 1, alignItems: 'center' },
   label: { color: theme.COLORS.white, fontSize: 11, marginTop: 4 },
+  logoutItem: {
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
 
 export default BottomNav;

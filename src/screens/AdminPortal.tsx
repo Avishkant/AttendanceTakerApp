@@ -25,6 +25,8 @@ const AdminTabs: React.FC = () => (
   <Tab.Navigator
     screenOptions={{
       headerShown: false,
+      // hide the built-in tab bar since we render a custom BottomNav
+      tabBarStyle: { display: 'none' },
     }}
   >
     <Tab.Screen
