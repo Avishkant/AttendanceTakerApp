@@ -6,6 +6,19 @@ apply plugin: "com.facebook.react"
 // This is required on some setups to ensure icon fonts are bundled correctly.
 apply from: "../../node_modules/react-native-vector-icons/fonts.gradle"
 
+// Backwards-compatible fallback: ensure fonts are present under app/src/main/assets/fonts
+// Some environments don't pick up the intermediate assets folder. This copies the
+// font files into the explicit assets folder so the runtime can always find them.
+task copyVectorIconFontsToAssets(type: Copy) {
+    def fontsDir = file('../../node_modules/react-native-vector-icons/Fonts')
+    def destDir = file('src/main/assets/fonts')
+    from(fontsDir)
+    into(destDir)
+    include('*.ttf')
+}
+
+preBuild.dependsOn(copyVectorIconFontsToAssets)
+
 /**
  * This is the configuration block to customize your React Native Android app.
  * By default you don't need to apply any configuration, just uncomment the lines you need.
