@@ -125,18 +125,19 @@ export default function ConfirmCard({
   }
 
   // Auto-dismiss success cards after a short delay if an onConfirm handler is present
-  useEffect(() => {
-    if (visible && variant === 'success' && onConfirm) {
-      const t = setTimeout(() => onConfirm(), 1400);
-      return () => clearTimeout(t);
-    }
-    return undefined;
-  }, [visible, variant, onConfirm]);
+  // NOTE: removed automatic auto-dismiss behavior so the card remains visible
+  // until the caller explicitly handles confirm/cancel. This ensures users
+  // actually see success and confirmation dialogs instead of them closing
+  // immediately on some devices.
 
   if (!mounted) return null;
 
+  // Use `mounted` to keep the native Modal mounted during the show/hide
+  // animation cycle. Using `visible` directly could hide the native Modal
+  // immediately when `visible` flips to false, preventing the exit
+  // animation from displaying.
   return (
-    <Modal visible={visible} transparent animationType="none">
+    <Modal visible={mounted} transparent animationType="none">
       <View style={styles.backdrop}>
         <Animated.View
           style={[

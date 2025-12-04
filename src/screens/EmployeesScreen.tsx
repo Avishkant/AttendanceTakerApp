@@ -8,12 +8,16 @@ import {
   ActivityIndicator,
   Modal,
   Button,
-  TouchableOpacity,
   Alert,
 } from 'react-native';
 import api from '../api/client';
 import EmployeeListItem from '../components/EmployeeListItem';
 import { useNavigation } from '@react-navigation/native';
+import AdminHeader from '../components/AdminHeader';
+import PrimaryButton from '../components/PrimaryButton';
+import Container from '../components/Container';
+import AnimatedCard from '../components/AnimatedCard';
+import theme from '../theme';
 
 const EmployeesScreen: React.FC = () => {
   const [query, setQuery] = useState('');
@@ -37,29 +41,6 @@ const EmployeesScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    load();
-  }, []);
-
-  const resetForm = () => {
-    setName('');
-    setEmail('');
-    setRole('employee');
-    setPassword('');
-  };
-
-  const validate = () => {
-    if (!name.trim()) return 'Name is required';
-    if (!email.trim()) return 'Email is required';
-    // simple email regex
-    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!re.test(email)) return 'Email is invalid';
-    if (!role.trim()) return 'Role is required';
-    if (password && password.length < 6)
-      return 'Password must be at least 6 characters';
-    return null;
   };
 
   const submitCreate = async () => {
@@ -89,119 +70,160 @@ const EmployeesScreen: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    load();
+  }, []);
+
+  const resetForm = () => {
+    setName('');
+    setEmail('');
+    setRole('employee');
+    setPassword('');
+  };
+
+  const validate = () => {
+    if (!name.trim()) return 'Name is required';
+    if (!email.trim()) return 'Email is required';
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!re.test(email)) return 'Email is invalid';
+    if (!role.trim()) return 'Role is required';
+    if (password && password.length > 0 && password.length < 6)
+      return 'Password must be at least 6 characters';
+    return null;
+  };
+
   return (
-    <View style={styles.container}>
-      <View style={styles.headerRow}>
-        <TextInput
-          placeholder="Search by name or email..."
-          value={query}
-          onChangeText={setQuery}
-          onSubmitEditing={() => load(query)}
-          style={styles.search}
-        />
-        <TouchableOpacity
-          style={styles.createBtn}
-          onPress={() => setCreating(true)}
-          accessibilityRole="button"
-        >
-          <Text style={{ color: '#fff', fontWeight: '700' }}>+ Create</Text>
-        </TouchableOpacity>
-      </View>
+    <Container>
+      <View style={{ padding: theme.SPACING.md, flex: 1 }}>
+        <AdminHeader title="Employees" subtitle="Manage your team" />
 
-      {loading ? <ActivityIndicator /> : null}
-      <FlatList
-        data={employees}
-        keyExtractor={i => i._id}
-        renderItem={({ item }) => (
-          <EmployeeListItem
-            name={item.name}
-            email={item.email}
-            role={item.role}
-            onManage={() =>
-              navigation.navigate('EmployeeManage' as any, {
-                employeeId: item._id,
-              })
-            }
-          />
-        )}
-        ListEmptyComponent={() => (
-          <Text style={styles.empty}>No employees</Text>
-        )}
-      />
+        <AnimatedCard style={{ marginBottom: theme.SPACING.sm }}>
+          <View style={styles.headerRow}>
+            <TextInput
+              placeholder="Search by name or email..."
+              value={query}
+              onChangeText={setQuery}
+              onSubmitEditing={() => load(query)}
+              style={styles.search}
+              placeholderTextColor={theme.COLORS.neutralText}
+            />
+            <PrimaryButton
+              title="+ Create"
+              onPress={() => setCreating(true)}
+              style={styles.createBtn}
+              icon="plus"
+            />
+          </View>
+        </AnimatedCard>
 
-      <Modal
-        visible={creating}
-        animationType="slide"
-        onRequestClose={() => setCreating(false)}
-      >
-        <View style={styles.modalContainer}>
-          <Text style={styles.modalTitle}>Create Employee</Text>
-          <TextInput
-            placeholder="Name"
-            value={name}
-            onChangeText={setName}
-            style={styles.input}
-          />
-          <TextInput
-            placeholder="Email"
-            value={email}
-            onChangeText={setEmail}
-            style={styles.input}
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-          <TextInput
-            placeholder="Role (employee/admin)"
-            value={role}
-            onChangeText={setRole}
-            style={styles.input}
-          />
-          <TextInput
-            placeholder="Password (optional)"
-            value={password}
-            onChangeText={setPassword}
-            style={styles.input}
-            secureTextEntry
-          />
-          {submitting ? (
-            <ActivityIndicator />
-          ) : (
-            <View style={{ flexDirection: 'row', marginTop: 12 }}>
-              <View style={{ flex: 1, marginRight: 8 }}>
-                <Button
-                  title="Cancel"
-                  onPress={() => {
-                    setCreating(false);
-                    resetForm();
-                  }}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Button title="Create" onPress={submitCreate} />
-              </View>
-            </View>
+        {loading ? (
+          <ActivityIndicator style={{ marginTop: theme.SPACING.sm }} />
+        ) : null}
+        <FlatList
+          data={employees}
+          keyExtractor={i => i._id}
+          renderItem={({ item }) => (
+            <EmployeeListItem
+              name={item.name}
+              email={item.email}
+              role={item.role}
+              onManage={() =>
+                navigation.navigate('EmployeeManage' as any, {
+                  employeeId: item._id,
+                })
+              }
+            />
           )}
-        </View>
-      </Modal>
-    </View>
+          ListEmptyComponent={() => (
+            <Text style={styles.empty}>No employees</Text>
+          )}
+        />
+
+        <Modal
+          visible={creating}
+          animationType="slide"
+          onRequestClose={() => setCreating(false)}
+        >
+          <Container>
+            <AnimatedCard style={{ margin: theme.SPACING.md }}>
+              <Text style={styles.modalTitle}>Create Employee</Text>
+              <TextInput
+                placeholder="Name"
+                value={name}
+                onChangeText={setName}
+                style={styles.input}
+                placeholderTextColor={theme.COLORS.neutralText}
+              />
+              <TextInput
+                placeholder="Email"
+                value={email}
+                onChangeText={setEmail}
+                style={styles.input}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                placeholderTextColor={theme.COLORS.neutralText}
+              />
+              <TextInput
+                placeholder="Role (employee/admin)"
+                value={role}
+                onChangeText={setRole}
+                style={styles.input}
+                placeholderTextColor={theme.COLORS.neutralText}
+              />
+              <TextInput
+                placeholder="Password (optional)"
+                value={password}
+                onChangeText={setPassword}
+                style={styles.input}
+                secureTextEntry
+                placeholderTextColor={theme.COLORS.neutralText}
+              />
+              {submitting ? (
+                <ActivityIndicator />
+              ) : (
+                <View
+                  style={{ flexDirection: 'row', marginTop: theme.SPACING.md }}
+                >
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <PrimaryButton
+                      title="Cancel"
+                      onPress={() => {
+                        setCreating(false);
+                        resetForm();
+                      }}
+                      secondary
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <PrimaryButton
+                      title="Create"
+                      onPress={submitCreate}
+                      icon="check"
+                    />
+                  </View>
+                </View>
+              )}
+            </AnimatedCard>
+          </Container>
+        </Modal>
+      </View>
+    </Container>
   );
 };
 
 const styles = StyleSheet.create({
   search: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 8,
-    borderRadius: 6,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    padding: 10,
+    borderRadius: 10,
     marginBottom: 12,
+    color: '#fff',
   },
   container: { flex: 1, padding: 12 },
   headerRow: { flexDirection: 'row', alignItems: 'center' },
   createBtn: {
-    backgroundColor: '#10b981',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 6,
     marginLeft: 8,
   },
   empty: { padding: 12 },
@@ -209,10 +231,11 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 12 },
   input: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 8,
-    borderRadius: 6,
+    borderColor: 'rgba(255,255,255,0.08)',
+    padding: 10,
+    borderRadius: 8,
     marginBottom: 8,
+    backgroundColor: 'rgba(255,255,255,0.02)',
   },
 });
 

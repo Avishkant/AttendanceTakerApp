@@ -7,16 +7,21 @@ import {
   Button,
   Alert,
   TextInput,
-  ScrollView,
   FlatList,
   ActivityIndicator,
   Modal,
   TouchableOpacity,
+  Image,
 } from 'react-native';
 import api from '../api/client';
 import ConfirmCard from '../components/ConfirmCard';
+import AttendanceBadge from '../components/AttendanceBadge';
+import PrimaryButton from '../components/PrimaryButton';
 import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
 import DatePicker from 'react-native-date-picker';
+import Container from '../components/Container';
+import AnimatedCard from '../components/AnimatedCard';
+import theme from '../theme';
 
 type RouteParams = { params: { employeeId: string } };
 
@@ -257,29 +262,107 @@ const EmployeeManageScreen: React.FC = () => {
     );
 
   return (
-    <ScrollView
-      style={{ flex: 1 }}
-      contentContainerStyle={{ padding: 12 }}
-      showsVerticalScrollIndicator={true}
-      persistentScrollbar={true}
-      // RN 0.82+ may support scrollbarThumbColor on Android; fallback ignored on older RN
-      // @ts-ignore
-      scrollbarThumbColor="#888"
-    >
-      <Text style={styles.title}>{employee.name}</Text>
-      <Text style={{ color: '#666' }}>{employee.email}</Text>
+    <Container scroll contentContainerStyle={{ padding: theme.SPACING.md }}>
+      {/* Profile header */}
+      <AnimatedCard style={{ marginBottom: theme.SPACING.sm }}>
+        <View
+          style={[styles.profileCard, { backgroundColor: theme.COLORS.card }]}
+        >
+          <View style={styles.profileRow}>
+            <View style={styles.avatar}>
+              {employee?.avatar ? (
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-ignore
+                <Image
+                  source={{ uri: employee.avatar }}
+                  style={styles.avatarImage}
+                />
+              ) : (
+                <Text style={styles.avatarInitials}>
+                  {String(employee.name || '?')
+                    .split(' ')
+                    .map((s: string) => s[0])
+                    .slice(0, 2)
+                    .join('')}
+                </Text>
+              )}
+            </View>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={styles.title}>{employee.name}</Text>
+              <Text style={styles.role}>
+                {employee.role || employee?.position || 'Employee'}
+              </Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={styles.smallLabel}>Working Hours</Text>
+              <Text style={styles.hoursValue}>7h 21m</Text>
+            </View>
+          </View>
 
-      <View style={{ marginTop: 12 }}>
-        <Text>Name</Text>
+          {/* Simple weekly bar chart computed from attendance timestamps */}
+          <View style={styles.chartRow}>
+            {(() => {
+              const week = [0, 0, 0, 0, 0, 0, 0];
+              attendance.forEach(a => {
+                try {
+                  const d = new Date(a.timestamp);
+                  const day = d.getDay();
+                  week[day] = (week[day] || 0) + 1;
+                } catch (e) {}
+              });
+              const max = Math.max(...week, 1);
+              return week.map((v, i) => (
+                <View key={i} style={styles.barWrap}>
+                  <View style={[styles.bar, { height: 36 * (v / max) + 6 }]} />
+                  <Text style={styles.barLabel}>{'SMTWTFS'[i] || '·'}</Text>
+                </View>
+              ));
+            })()}
+          </View>
+
+          {/* Attendance badges */}
+          <View style={styles.badgesRow}>
+            <AttendanceBadge
+              label="Working Day"
+              value={attendance.filter(a => a.type === 'in').length || '—'}
+              color="#E6F0FF"
+            />
+            <AttendanceBadge label="Absent" value={'—'} color="#FFE8D6" />
+            <AttendanceBadge label="Late Log" value={'—'} color="#FFE6F0" />
+          </View>
+
+          <View style={styles.badgesRow}>
+            <AttendanceBadge label="Half Day" value={'—'} color="#E6FFF2" />
+            <AttendanceBadge
+              label="One Day Leaves"
+              value={'—'}
+              color="#F0E6FF"
+            />
+            <AttendanceBadge label="Sick Leaves" value={'—'} color="#E6F0FF" />
+          </View>
+        </View>
+      </AnimatedCard>
+
+      <View style={{ marginTop: theme.SPACING.md }}>
+        <Text style={styles.sectionLabel}>Profile</Text>
+        <Text style={{ marginBottom: 6 }}>Name</Text>
         <TextInput
           value={editingName}
           onChangeText={setEditingName}
-          style={styles.input}
+          style={[
+            styles.input,
+            {
+              backgroundColor: theme.COLORS.cardElevated,
+              color: theme.COLORS.black,
+            },
+          ]}
         />
-        <Button title="Save" onPress={save} />
+        <View style={{ marginTop: 8 }}>
+          <PrimaryButton title="Save" onPress={save} icon="💾" />
+        </View>
       </View>
 
-      <View style={{ marginTop: 12 }}>
+      <View style={{ marginTop: theme.SPACING.md }}>
         <Button
           title="Deregister Device"
           onPress={deregister}
@@ -287,14 +370,14 @@ const EmployeeManageScreen: React.FC = () => {
         />
       </View>
 
-      <View style={{ marginTop: 12 }}>
+      <View style={{ marginTop: theme.SPACING.md }}>
         <Text style={{ fontWeight: '700', marginBottom: 6 }}>
           Registered Device
         </Text>
         <Text>{employee?.registeredDevice?.id || 'No device registered'}</Text>
       </View>
 
-      <View style={{ marginTop: 12 }}>
+      <View style={{ marginTop: theme.SPACING.md }}>
         <Text style={{ fontWeight: '700', marginBottom: 6 }}>
           Reset Password
         </Text>
@@ -303,7 +386,13 @@ const EmployeeManageScreen: React.FC = () => {
           value={resetPassword}
           onChangeText={setResetPassword}
           secureTextEntry
-          style={styles.input}
+          style={[
+            styles.input,
+            {
+              backgroundColor: theme.COLORS.cardElevated,
+              color: theme.COLORS.black,
+            },
+          ]}
         />
         {resetting ? (
           <ActivityIndicator />
@@ -312,7 +401,7 @@ const EmployeeManageScreen: React.FC = () => {
         )}
       </View>
 
-      <View style={{ marginTop: 16 }}>
+      <View style={{ marginTop: theme.SPACING.md }}>
         <Text style={{ fontWeight: '700', marginBottom: 6 }}>
           Add Attendance Mark
         </Text>
@@ -357,8 +446,10 @@ const EmployeeManageScreen: React.FC = () => {
               flex: 1,
               padding: 8,
               borderWidth: 1,
-              borderColor: '#ccc',
+              borderColor: 'rgba(0,0,0,0.06)',
               borderRadius: 6,
+              backgroundColor: theme.COLORS.cardElevated,
+              color: theme.COLORS.black,
             }}
           >
             {new Date(markTimestamp).toLocaleString()}
@@ -385,7 +476,7 @@ const EmployeeManageScreen: React.FC = () => {
         />
       </View>
 
-      <View style={{ marginTop: 16 }}>
+      <View style={{ marginTop: theme.SPACING.md }}>
         <Text style={{ fontWeight: '700', marginBottom: 6 }}>
           Attendance Records
         </Text>
@@ -462,9 +553,7 @@ const EmployeeManageScreen: React.FC = () => {
               padding: 20,
             }}
           >
-            <View
-              style={{ backgroundColor: '#fff', borderRadius: 8, padding: 12 }}
-            >
+            <AnimatedCard style={{ padding: 12 }}>
               <Text style={{ fontWeight: '700', marginBottom: 8 }}>
                 Pick Date & Time
               </Text>
@@ -473,9 +562,10 @@ const EmployeeManageScreen: React.FC = () => {
                 onDateChange={setPickerDate}
                 mode="datetime"
                 androidVariant="iosClone"
-                // Ensure picker text is visible on dark themes / Android variants
-                textColor={Platform.OS === 'android' ? '#000' : undefined}
-                style={{ backgroundColor: '#fff' }}
+                textColor={
+                  Platform.OS === 'android' ? theme.COLORS.black : undefined
+                }
+                style={{ backgroundColor: theme.COLORS.card }}
               />
               <View
                 style={{
@@ -498,12 +588,12 @@ const EmployeeManageScreen: React.FC = () => {
                   }}
                 />
               </View>
-            </View>
+            </AnimatedCard>
           </View>
         </Modal>
       ) : null}
 
-      <View style={{ marginTop: 12 }}>
+      <View style={{ marginTop: theme.SPACING.md }}>
         <Button title="Delete User" onPress={remove} color="#ef4444" />
       </View>
 
@@ -539,18 +629,26 @@ const EmployeeManageScreen: React.FC = () => {
         onCancel={() => setShowDeleteConfirm(false)}
         onConfirm={performDelete}
       />
-    </ScrollView>
+    </Container>
   );
 };
 
 const styles = StyleSheet.create({
-  title: { fontSize: 18, fontWeight: '700' },
+  title: { fontSize: 18, fontWeight: '700', color: theme.COLORS.black },
+  sectionLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 8,
+    color: theme.COLORS.muted,
+  },
   input: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 8,
-    borderRadius: 6,
+    borderColor: 'rgba(0,0,0,0.06)',
+    padding: 10,
+    borderRadius: 8,
     marginTop: 6,
+    backgroundColor: theme.COLORS.cardElevated,
+    color: theme.COLORS.black,
   },
   row: {
     flexDirection: 'row',
@@ -575,6 +673,46 @@ const styles = StyleSheet.create({
   },
   typeButtonTextActive: {
     color: '#fff',
+  },
+  profileCard: {
+    backgroundColor: theme.COLORS.card,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+  },
+  profileRow: { flexDirection: 'row', alignItems: 'center' },
+  avatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: theme.COLORS.cardElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarInitials: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: theme.COLORS.black,
+  },
+  avatarImage: { width: 72, height: 72, resizeMode: 'cover' },
+  role: { color: theme.COLORS.muted, marginTop: 4 },
+  smallLabel: { fontSize: 12, color: theme.COLORS.muted },
+  hoursValue: { fontWeight: '700', fontSize: 14, color: theme.COLORS.black },
+  chartRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginTop: 12,
+    paddingHorizontal: 6,
+    justifyContent: 'space-between',
+  },
+  barWrap: { alignItems: 'center', flex: 1 },
+  bar: { width: 10, backgroundColor: '#3B82F6', borderRadius: 6 },
+  barLabel: { marginTop: 6, fontSize: 10, color: theme.COLORS.muted },
+  badgesRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 12,
   },
 });
 

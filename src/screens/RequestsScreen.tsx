@@ -1,6 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, Button, StyleSheet, Alert } from 'react-native';
 import api from '../api/client';
+import AdminHeader from '../components/AdminHeader';
+import PrimaryButton from '../components/PrimaryButton';
+import Container from '../components/Container';
+import AnimatedCard from '../components/AnimatedCard';
+import theme from '../theme';
 
 const RequestsScreen: React.FC = () => {
   const [requests, setRequests] = useState<any[]>([]);
@@ -32,51 +37,63 @@ const RequestsScreen: React.FC = () => {
   };
 
   return (
-    <View style={{ flex: 1, padding: 12 }}>
-      <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 12 }}>
-        Device Change Requests
-      </Text>
-      <FlatList
-        data={requests}
-        keyExtractor={i => i._id || i.id}
-        renderItem={({ item }) => (
-          <View style={styles.row}>
-            <View>
-              <Text style={{ fontWeight: '700' }}>{item.newDeviceId}</Text>
-              <Text style={{ color: '#666' }}>
-                {item.user?.name} ·{' '}
-                {new Date(item.requestedAt).toLocaleString()}
-              </Text>
-            </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={{ marginBottom: 6 }}>{item.status}</Text>
-              {item.status === 'pending' ? (
-                <View style={{ flexDirection: 'row' }}>
-                  <Button
-                    title="Approve"
-                    onPress={() => action(item._id || item.id, 'approve')}
-                  />
-                  <View style={{ width: 8 }} />
-                  <Button
-                    title="Reject"
-                    onPress={() => action(item._id || item.id, 'reject')}
-                    color="#ef4444"
-                  />
+    <Container>
+      <View style={{ padding: theme.SPACING.md, flex: 1 }}>
+        <AdminHeader
+          title="Device Requests"
+          subtitle="Approve or reject device changes"
+        />
+
+        <FlatList
+          data={requests}
+          keyExtractor={i => i._id || i.id}
+          renderItem={({ item }) => (
+            <AnimatedCard style={{ marginBottom: theme.SPACING.sm }}>
+              <View style={styles.row}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.reqTitle}>{item.newDeviceId}</Text>
+                  <Text style={styles.reqMeta}>
+                    {item.user?.name} ·{' '}
+                    {new Date(item.requestedAt).toLocaleString()}
+                  </Text>
+                  <Text style={styles.status}>{item.status}</Text>
                 </View>
-              ) : (
-                <Button
-                  title="Delete"
-                  onPress={() => action(item._id || item.id, 'delete')}
-                />
-              )}
-            </View>
-          </View>
-        )}
-        ListEmptyComponent={() => (
-          <Text style={{ padding: 12 }}>No requests</Text>
-        )}
-      />
-    </View>
+                <View
+                  style={{ alignItems: 'flex-end', justifyContent: 'center' }}
+                >
+                  {item.status === 'pending' ? (
+                    <View style={{ flexDirection: 'row' }}>
+                      <PrimaryButton
+                        title="Approve"
+                        onPress={() => action(item._id || item.id, 'approve')}
+                        icon="check"
+                        style={{ marginRight: 8 }}
+                      />
+                      <PrimaryButton
+                        title="Reject"
+                        onPress={() => action(item._id || item.id, 'reject')}
+                        icon="x"
+                        secondary
+                      />
+                    </View>
+                  ) : (
+                    <PrimaryButton
+                      title="Delete"
+                      onPress={() => action(item._id || item.id, 'delete')}
+                      secondary
+                      icon="trash"
+                    />
+                  )}
+                </View>
+              </View>
+            </AnimatedCard>
+          )}
+          ListEmptyComponent={() => (
+            <Text style={{ padding: theme.SPACING.md }}>No requests</Text>
+          )}
+        />
+      </View>
+    </Container>
   );
 };
 
@@ -86,8 +103,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: 'rgba(0,0,0,0.06)',
+    alignItems: 'center',
+    backgroundColor: theme.COLORS.cardElevated,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    marginBottom: 8,
   },
+  reqTitle: { fontWeight: '800', color: theme.COLORS.black, marginBottom: 6 },
+  reqMeta: { color: theme.COLORS.neutralText },
+  status: { marginTop: 8, color: theme.COLORS.primary, fontWeight: '600' },
 });
 
 export default RequestsScreen;

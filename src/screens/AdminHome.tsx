@@ -8,6 +8,13 @@ import {
   RefreshControl,
 } from 'react-native';
 import api from '../api/client';
+import AdminHeader from '../components/AdminHeader';
+import StatCard from '../components/StatCard';
+import Card from '../components/Card';
+import PrimaryButton from '../components/PrimaryButton';
+import theme from '../theme';
+import Container from '../components/Container';
+import AnimatedCard from '../components/AnimatedCard';
 
 const AdminHome: React.FC = () => {
   const [stats, setStats] = useState<any>(null);
@@ -81,58 +88,108 @@ const AdminHome: React.FC = () => {
   }, [load]);
 
   return (
-    <ScrollView
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={load} />
-      }
-      contentContainerStyle={{ padding: 12 }}
-    >
-      <Text style={styles.title}>Admin Dashboard</Text>
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Total employees</Text>
-        <Text style={styles.cardValue}>{stats?.totalEmployees ?? '—'}</Text>
-      </View>
+    <Container scroll contentContainerStyle={{ padding: theme.SPACING.md }}>
+      <RefreshControl refreshing={refreshing} onRefresh={load} />
+      <AdminHeader
+        title="Welcome, Admin"
+        subtitle="Overview of your organization"
+      />
+
       {error ? (
-        <View style={styles.errorRow}>
-          <Text style={styles.errorText}>{error}</Text>
-          <Button title="Retry" onPress={load} />
-        </View>
+        <AnimatedCard style={{ marginBottom: theme.SPACING.md }}>
+          <View style={styles.errorRow}>
+            <Text style={styles.errorText}>{error}</Text>
+            <Button title="Retry" onPress={load} />
+          </View>
+        </AnimatedCard>
       ) : null}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Pending requests</Text>
-        <Text style={styles.cardValue}>{stats?.pendingRequests ?? '—'}</Text>
-      </View>
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Last 24h marks</Text>
-        <Text style={styles.cardValue}>{stats?.last24hMarks ?? '—'}</Text>
-      </View>
-      <View style={{ marginTop: 12 }}>
-        <Button title="Create Employee" onPress={() => {}} />
-      </View>
-    </ScrollView>
+
+      <AnimatedCard>
+        <View style={styles.statsRowTop}>
+          <StatCard
+            title="Total Employees"
+            value={stats?.totalEmployees ?? '—'}
+            color={theme.COLORS.primary}
+          />
+          <StatCard
+            title="Pending Requests"
+            value={stats?.pendingRequests ?? '—'}
+            color={theme.COLORS.warning}
+          />
+          <StatCard
+            title="Last 24h"
+            value={stats?.last24hMarks ?? '—'}
+            color={theme.COLORS.success}
+          />
+        </View>
+        <View style={styles.actionsRow}>
+          <PrimaryButton
+            title="+ Add Employee"
+            onPress={() => {}}
+            icon="plus"
+          />
+          <PrimaryButton
+            title="View Requests"
+            onPress={() => {}}
+            secondary
+            icon="list"
+            style={{ marginLeft: theme.SPACING.sm }}
+          />
+        </View>
+      </AnimatedCard>
+
+      <View style={{ height: 32 }} />
+    </Container>
   );
 };
 
 const styles = StyleSheet.create({
-  title: { fontSize: 18, fontWeight: '700', marginBottom: 12 },
-  card: {
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: '#fff',
+  statsRowTop: {
+    flexDirection: 'row',
+    marginTop: 6,
     marginBottom: 12,
+    justifyContent: 'space-between',
   },
-  cardTitle: { color: '#666' },
-  cardValue: { fontSize: 20, fontWeight: '700' },
+  actionsRow: {
+    flexDirection: 'row',
+    marginTop: 12,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+  },
+  actionButton: {
+    flex: 1,
+    backgroundColor: '#4C1FFB',
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#4C1FFB',
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  actionText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  secondary: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  secondaryText: {
+    color: '#EDE9FF',
+  },
   errorRow: {
-    backgroundColor: '#fee',
+    backgroundColor: 'rgba(255,230,230,0.06)',
     padding: 8,
-    borderRadius: 6,
+    borderRadius: 8,
     marginBottom: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  errorText: { color: '#900', flex: 1, marginRight: 8 },
+  errorText: { color: '#FFBABA', flex: 1, marginRight: 8 },
 });
 
 export default AdminHome;
