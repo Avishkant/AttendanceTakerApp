@@ -16,6 +16,7 @@ type AuthContextType = {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -111,8 +112,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     await AsyncStorage.removeItem('user');
   };
 
+  const refreshUser = async () => {
+    try {
+      const currentToken = token || (await AsyncStorage.getItem('token'));
+      if (!currentToken) {
+        return;
+      }
+
+      // Fetch fresh user data from server
+      const res = await api.get('/api/auth/me');
+      if (res?.data?.success && res.data.data) {
+        const freshUser = res.data.data;
+        setUser(freshUser);
+        await AsyncStorage.setItem('user', JSON.stringify(freshUser));
+      }
+    } catch (err) {
+      console.error('Failed to refresh user data:', err);
+      // Don't throw error, just log it
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, loading, signIn, signOut }}>
+    <AuthContext.Provider
+      value={{ user, token, loading, signIn, signOut, refreshUser }}
+    >
       {children}
     </AuthContext.Provider>
   );

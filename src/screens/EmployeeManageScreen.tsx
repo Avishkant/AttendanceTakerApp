@@ -272,28 +272,24 @@ const EmployeeManageScreen: React.FC = () => {
 
   return (
     <View style={styles.screen}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Icon name="arrow-left" size={20} color="#1e293b" />
-        </Pressable>
-        <Text style={styles.headerTitle}>Employee Details</Text>
-        <View
-          style={[
-            styles.statusBadge,
-            employee.status === 'Active'
-              ? styles.statusActive
-              : styles.statusInactive,
-          ]}
-        >
-          <Text style={styles.statusText}>{employee.status || 'Active'}</Text>
-        </View>
-      </View>
-
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
       >
+        {/* Status Badge */}
+        <View style={styles.topStatusContainer}>
+          <View
+            style={[
+              styles.statusBadge,
+              employee.status === 'Active'
+                ? styles.statusActive
+                : styles.statusInactive,
+            ]}
+          >
+            <Text style={styles.statusText}>{employee.status || 'Active'}</Text>
+          </View>
+        </View>
+
         {/* Profile Section */}
         <View style={styles.profileSection}>
           <View style={styles.avatarContainer}>
@@ -730,30 +726,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f8fafc',
   },
-  header: {
-    height: 56,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  backBtn: {
-    padding: 8,
-    marginLeft: -8,
-  },
-  headerTitle: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1e293b',
-    textAlign: 'center',
+  topStatusContainer: {
+    alignItems: 'flex-end',
+    marginBottom: 8,
   },
   statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
   },
   statusActive: {
     backgroundColor: '#d1fae5',
@@ -762,7 +742,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fee2e2',
   },
   statusText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#065f46',
   },

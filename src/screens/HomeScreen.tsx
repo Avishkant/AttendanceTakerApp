@@ -9,6 +9,7 @@ import {
   FlatList,
   RefreshControl,
   TouchableOpacity,
+  ScrollView,
 } from 'react-native';
 import Icon from '../components/Icon';
 import theme from '../theme';
@@ -21,7 +22,7 @@ import Toast from 'react-native-toast-message';
 type RecordItem = { _id: string; type: 'in' | 'out'; timestamp: string };
 
 const HomeScreen: React.FC = () => {
-  const { user, signOut } = useAuth();
+  const { user, signOut, refreshUser } = useAuth();
   const navigation = useNavigation<any>();
   const [marking, setMarking] = useState<'in' | 'out' | null>(null);
   const [recent, setRecent] = useState<RecordItem[]>([]);
@@ -59,14 +60,16 @@ const HomeScreen: React.FC = () => {
   useEffect(() => {
     loadRecent();
     checkPendingRequest();
-  }, [loadRecent]);
+    refreshUser(); // Refresh user data on mount
+  }, [loadRecent, refreshUser]);
 
   useFocusEffect(
     useCallback(() => {
       loadRecent();
       checkPendingRequest();
+      refreshUser(); // Refresh user data when screen focuses
       return undefined;
-    }, [loadRecent]),
+    }, [loadRecent, refreshUser]),
   );
 
   const showToast = (type: 'success' | 'error' | 'info', message: string) => {
@@ -256,282 +259,548 @@ const HomeScreen: React.FC = () => {
 
   return (
     <View style={styles.screen}>
+      {/* Modern Gradient Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <Text style={styles.welcome}>
-            Welcome{user?.name ? `, ${user.name}` : ''}
-          </Text>
+          <View>
+            <Text style={styles.greeting}>Good {getGreeting()}</Text>
+            <Text style={styles.welcome}>{user?.name || 'Employee'}</Text>
+          </View>
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel="Logout"
             onPress={() => signOut()}
             style={styles.headerIcon}
           >
-            <Icon name="log-out" size={18} color={theme.COLORS.white} />
+            <Icon name="log-out" size={22} color="#fff" />
           </TouchableOpacity>
         </View>
 
-        <View style={styles.segmentRow}>
-          <View style={[styles.segmentPill, styles.segmentActive]}>
-            <Text style={styles.segmentTextActive}>Office</Text>
-          </View>
+        <View style={styles.dateRow}>
+          <Icon name="calendar" size={16} color="rgba(255,255,255,0.9)" />
+          <Text style={styles.dateText}>{formatDate()}</Text>
         </View>
       </View>
-      <View style={styles.contentWrap}>
-        <View style={styles.card}>
-          <View style={styles.cardTopRow}>
-            <Text style={styles.currentTime}>
-              {new Date().toLocaleTimeString()}
-            </Text>
-            {/* Render Check In or Check Out + Break depending on status */}
-            {isCheckedIn(recent) ? (
-              <View style={styles.actionRow}>
-                <TouchableOpacity
-                  style={[styles.outlineBtn]}
-                  onPress={() => mark('out')}
-                  disabled={marking !== null}
-                >
-                  <Text style={styles.outlineBtnText}>
-                    {marking === 'out' ? '...' : 'Break'}
-                  </Text>
-                </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[styles.checkOutBtn]}
-                  onPress={() => mark('out')}
-                  disabled={marking !== null}
-                >
-                  {marking === 'out' ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.checkBtnText}>Check Out</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.contentWrap}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Status Card */}
+        <View style={styles.statusCard}>
+          <View style={styles.statusHeader}>
+            <View style={styles.statusBadge}>
+              <View
+                style={[
+                  styles.statusDot,
+                  isCheckedIn(recent) && styles.statusDotActive,
+                ]}
+              />
+              <Text style={styles.statusText}>
+                {isCheckedIn(recent) ? 'Checked In' : 'Checked Out'}
+              </Text>
+            </View>
+            <Text style={styles.currentTime}>
+              {new Date().toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </Text>
+          </View>
+
+          {/* Action Buttons */}
+          <View style={styles.actionContainer}>
+            {isCheckedIn(recent) ? (
+              <TouchableOpacity
+                style={styles.checkOutBtn}
+                onPress={() => mark('out')}
+                disabled={marking !== null}
+              >
+                {marking === 'out' ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <>
+                    <Icon name="log-out" size={20} color="#fff" />
+                    <Text style={styles.actionBtnText}>Check Out</Text>
+                  </>
+                )}
+              </TouchableOpacity>
             ) : (
               <TouchableOpacity
-                style={styles.checkBtn}
+                style={styles.checkInBtn}
                 onPress={() => mark('in')}
                 disabled={marking !== null}
               >
                 {marking === 'in' ? (
-                  <ActivityIndicator color="#fff" />
+                  <ActivityIndicator color="#fff" size="small" />
                 ) : (
-                  <Text style={styles.checkBtnText}>Check In</Text>
+                  <>
+                    <Icon name="log-in" size={20} color="#fff" />
+                    <Text style={styles.actionBtnText}>Check In</Text>
+                  </>
                 )}
               </TouchableOpacity>
             )}
           </View>
 
-          <View style={styles.smallStatsRow}>
-            <View style={styles.smallStat}>
-              <Text style={styles.smallStatLabel}>First IN</Text>
-              <Text style={styles.smallStatSub}>
+          {/* Stats Grid */}
+          <View style={styles.statsGrid}>
+            <View style={styles.statItem}>
+              <View style={styles.statIconContainer}>
+                <Icon name="clock" size={18} color="#6366f1" />
+              </View>
+              <Text style={styles.statLabel}>First In</Text>
+              <Text style={styles.statValue}>
                 {formatTime(firstIn(recent))}
               </Text>
             </View>
-            <View style={styles.smallStat}>
-              <Text style={styles.smallStatLabel}>Last OUT</Text>
-              <Text style={styles.smallStatSub}>
+            <View style={styles.statItem}>
+              <View style={styles.statIconContainer}>
+                <Icon name="clock" size={18} color="#10b981" />
+              </View>
+              <Text style={styles.statLabel}>Last Out</Text>
+              <Text style={styles.statValue}>
                 {formatTime(lastOut(recent))}
               </Text>
             </View>
-            <View style={styles.smallStat}>
-              <Text style={styles.smallStatLabel}>Working</Text>
-              <Text style={styles.smallStatSub}>
+            <View style={styles.statItem}>
+              <View style={styles.statIconContainer}>
+                <Icon name="activity" size={18} color="#f59e0b" />
+              </View>
+              <Text style={styles.statLabel}>Working</Text>
+              <Text style={styles.statValue}>
                 {formatDuration(totalWorkedMs(recent) - totalBreakMs(recent))}
               </Text>
             </View>
           </View>
         </View>
 
-        <TouchableOpacity
-          style={styles.requestBtn}
-          onPress={() => navigation.navigate('Requests')}
-        >
-          <Text style={styles.requestBtnText}>+ Request</Text>
-        </TouchableOpacity>
+        {/* Quick Actions */}
+        <View style={styles.quickActions}>
+          <TouchableOpacity
+            style={styles.quickActionBtn}
+            onPress={() => navigation.navigate('Requests')}
+          >
+            <Icon name="file-text" size={20} color="#6366f1" />
+            <Text style={styles.quickActionText}>Request Leave</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.quickActionBtn}
+            onPress={() => navigation.navigate('MyDevices')}
+          >
+            <Icon name="smartphone" size={20} color="#6366f1" />
+            <Text style={styles.quickActionText}>My Devices</Text>
+          </TouchableOpacity>
+        </View>
 
-        <View style={styles.content}>
-          <Text style={styles.sectionTitle}>Recent Activity</Text>
+        {/* Recent Activity */}
+        <View style={styles.activitySection}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Recent Activity</Text>
+            <TouchableOpacity>
+              <Text style={styles.seeAll}>See All</Text>
+            </TouchableOpacity>
+          </View>
+
           {recentError ? (
-            <View style={styles.errorRow}>
+            <View style={styles.errorCard}>
+              <Icon name="alert-circle" size={20} color="#ef4444" />
               <Text style={styles.errorText}>{recentError}</Text>
-              <Button title="Retry" onPress={loadRecent} />
+              <TouchableOpacity onPress={loadRecent} style={styles.retryBtn}>
+                <Text style={styles.retryText}>Retry</Text>
+              </TouchableOpacity>
             </View>
           ) : null}
-          <FlatList
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={loadRecent} />
-            }
-            data={recent}
-            keyExtractor={i => i._id}
-            renderItem={({ item }) => (
-              <View style={styles.rowItem}>
-                <Text style={styles.recentType}>{item.type.toUpperCase()}</Text>
-                <Text>{new Date(item.timestamp).toLocaleString()}</Text>
+
+          {refreshing && recent.length === 0 ? (
+            <ActivityIndicator style={styles.loader} color="#6366f1" />
+          ) : recent.length === 0 ? (
+            <RecentEmpty />
+          ) : (
+            recent.slice(0, 10).map(item => (
+              <View key={item._id} style={styles.activityItem}>
+                <View
+                  style={[
+                    styles.activityIcon,
+                    item.type === 'in'
+                      ? styles.activityIconIn
+                      : styles.activityIconOut,
+                  ]}
+                >
+                  <Icon
+                    name={item.type === 'in' ? 'log-in' : 'log-out'}
+                    size={16}
+                    color="#fff"
+                  />
+                </View>
+                <View style={styles.activityContent}>
+                  <Text style={styles.activityType}>
+                    {item.type === 'in' ? 'Checked In' : 'Checked Out'}
+                  </Text>
+                  <Text style={styles.activityTime}>
+                    {new Date(item.timestamp).toLocaleString()}
+                  </Text>
+                </View>
               </View>
-            )}
-            ListEmptyComponent={RecentEmpty}
-          />
+            ))
+          )}
         </View>
-      </View>
-      {/* toast handled by react-native-toast-message mounted at app root */}
+      </ScrollView>
     </View>
   );
 };
 
 const RecentEmpty = () => (
-  <Text style={styles.emptyText}>No recent activity</Text>
+  <View style={styles.emptyState}>
+    <Icon name="inbox" size={48} color="#cbd5e1" />
+    <Text style={styles.emptyText}>No recent activity</Text>
+  </View>
 );
 
+const getGreeting = () => {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Morning';
+  if (hour < 18) return 'Afternoon';
+  return 'Evening';
+};
+
+const formatDate = () => {
+  const days = [
+    'Sunday',
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+  ];
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  const now = new Date();
+  return `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]}`;
+};
+
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: theme.COLORS.bgLight },
+  screen: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+  },
+  scrollView: {
+    flex: 1,
+  },
   header: {
-    backgroundColor: theme.COLORS.primary,
-    paddingTop: 36,
-    paddingHorizontal: 16,
-    paddingBottom: 18,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
+    backgroundColor: '#6366f1',
+    paddingTop: 48,
+    paddingHorizontal: 20,
+    paddingBottom: 24,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
   headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  locationRow: { flexDirection: 'row', alignItems: 'center' },
-  locationText: { color: theme.COLORS.white, marginLeft: 8, fontSize: 12 },
+  greeting: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  welcome: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '800',
+    marginTop: 4,
+  },
   headerIcon: {
-    width: 36,
-    height: 36,
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 20,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    gap: 8,
+  },
+  dateText: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+
+  contentWrap: {
+    padding: 20,
+    paddingTop: 0,
+    marginTop: -20,
+  },
+
+  statusCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 5,
+    marginBottom: 16,
+  },
+  statusHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 8,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#94a3b8',
+  },
+  statusDotActive: {
+    backgroundColor: '#10b981',
+  },
+  statusText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  currentTime: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+
+  actionContainer: {
+    marginBottom: 20,
+  },
+  checkInBtn: {
+    backgroundColor: '#10b981',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 16,
+    gap: 8,
+    shadowColor: '#10b981',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  checkOutBtn: {
+    backgroundColor: '#ef4444',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 16,
+    gap: 8,
+    shadowColor: '#ef4444',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  actionBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+
+  statsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+    gap: 12,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f8fafc',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+
+  quickActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+  },
+  quickActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    paddingVertical: 14,
+    borderRadius: 14,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  quickActionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6366f1',
+  },
+
+  activitySection: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+    marginBottom: 20,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  seeAll: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6366f1',
+  },
+
+  loader: {
+    marginVertical: 20,
+  },
+
+  activityItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+    gap: 12,
+  },
+  activityIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  welcome: {
-    color: theme.COLORS.white,
-    marginTop: 12,
-    fontSize: 20,
-    fontWeight: '700',
+  activityIconIn: {
+    backgroundColor: '#d1fae5',
   },
-  segmentRow: { flexDirection: 'row', marginTop: 12 },
-  segmentPill: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+  activityIconOut: {
+    backgroundColor: '#fed7d7',
   },
-  segmentActive: { backgroundColor: theme.COLORS.white },
-  segmentText: { color: 'rgba(255,255,255,0.9)' },
-  segmentTextActive: { color: theme.COLORS.primary, fontWeight: '700' },
-
-  contentWrap: { flex: 1, padding: 16, marginTop: -28 },
-  card: {
-    padding: 16,
-    borderRadius: 16,
-    backgroundColor: theme.COLORS.card,
-    ...theme.SHADOW,
-  },
-  cardTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  currentTime: { fontSize: 22, fontWeight: '800' },
-  checkBtn: {
-    backgroundColor: theme.COLORS.primary,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 20,
-  },
-  checkBtnText: { color: theme.COLORS.white, fontWeight: '700' },
-
-  smallStatsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 12,
-  },
-  smallStat: { alignItems: 'center', flex: 1 },
-  smallStatLabel: { fontWeight: '700', marginTop: 6 },
-  smallStatSub: { color: theme.COLORS.neutralText, fontSize: 12 },
-
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 16,
-  },
-  statCard: {
+  activityContent: {
     flex: 1,
+  },
+  activityType: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#0f172a',
+    marginBottom: 2,
+  },
+  activityTime: {
+    fontSize: 13,
+    color: '#64748b',
+  },
+
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 32,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#94a3b8',
+    marginTop: 12,
+    fontWeight: '500',
+  },
+
+  errorCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef2f2',
     padding: 12,
     borderRadius: 12,
-    alignItems: 'center',
-    marginHorizontal: 4,
+    marginBottom: 16,
+    gap: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#ef4444',
   },
-  statLabel: { color: theme.COLORS.neutralText, fontSize: 12 },
-  statValue: { fontSize: 18, fontWeight: '800', marginTop: 6 },
-
-  requestBtn: {
-    marginTop: 16,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: theme.COLORS.primary,
-    paddingVertical: 10,
-    alignItems: 'center',
+  errorText: {
+    flex: 1,
+    color: '#ef4444',
+    fontSize: 13,
+    fontWeight: '500',
   },
-  requestBtnText: { color: theme.COLORS.primary, fontWeight: '700' },
-
-  // preserved styles below
-  sectionTitle: { fontSize: 16, fontWeight: '700', marginBottom: 8 },
-  rowItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  emptyText: { padding: 12 },
-  recentType: { fontWeight: '700' },
-  requestWrap: { marginTop: 12 },
-  content: { flex: 1 },
-  errorRow: {
-    backgroundColor: '#fee',
-    padding: 8,
-    borderRadius: 6,
-    marginBottom: 8,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  errorText: { color: '#900', flex: 1, marginRight: 8 },
-  toast: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    top: 12,
-    padding: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-    zIndex: 999,
-  },
-  toastText: { color: '#fff' },
-  toastSuccess: { backgroundColor: '#28a745' },
-  toastInfo: { backgroundColor: '#17a2b8' },
-  toastError: { backgroundColor: '#dc3545' },
-  actionRow: { flexDirection: 'row', gap: 8 },
-  outlineBtn: {
-    paddingVertical: 8,
+  retryBtn: {
     paddingHorizontal: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: theme.COLORS.primary,
-    marginRight: 8,
+    paddingVertical: 6,
+    backgroundColor: '#fff',
+    borderRadius: 8,
   },
-  outlineBtnText: { color: theme.COLORS.primary, fontWeight: '700' },
-  checkOutBtn: {
-    backgroundColor: '#FF3B30',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 14,
+  retryText: {
+    color: '#ef4444',
+    fontWeight: '600',
+    fontSize: 13,
   },
 });
 

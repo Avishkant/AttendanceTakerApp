@@ -8,6 +8,8 @@ import {
   TextInput,
   Pressable,
   RefreshControl,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Icon from '../components/Icon';
@@ -26,6 +28,8 @@ type AttendanceRecord = {
   };
 };
 
+type DateFilter = 'today' | 'yesterday' | 'week' | 'month' | 'custom' | 'all';
+
 const Records: React.FC = () => {
   const navigation = useNavigation();
   const { user } = useAuth();
@@ -37,6 +41,10 @@ const Records: React.FC = () => {
   );
   const [search, setSearch] = useState('');
   const [employees, setEmployees] = useState<any[]>([]);
+  const [dateFilter, setDateFilter] = useState<DateFilter>('all');
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
+  const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
 
   const loadRecords = async () => {
     try {
@@ -111,30 +119,75 @@ const Records: React.FC = () => {
     loadRecords();
   };
 
-  // Filter records based on search
+  // Filter records based on search and date
   useEffect(() => {
-    if (!search.trim()) {
-      setFilteredRecords(records);
-      return;
+    let filtered = [...records];
+
+    // Apply date filter
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    switch (dateFilter) {
+      case 'today':
+        filtered = filtered.filter(record => {
+          const recordDate = new Date(record.timestamp);
+          return recordDate >= today;
+        });
+        break;
+      case 'yesterday':
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        filtered = filtered.filter(record => {
+          const recordDate = new Date(record.timestamp);
+          return recordDate >= yesterday && recordDate < today;
+        });
+        break;
+      case 'week':
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        filtered = filtered.filter(record => {
+          const recordDate = new Date(record.timestamp);
+          return recordDate >= weekAgo;
+        });
+        break;
+      case 'month':
+        const monthAgo = new Date(today);
+        monthAgo.setDate(monthAgo.getDate() - 30);
+        filtered = filtered.filter(record => {
+          const recordDate = new Date(record.timestamp);
+          return recordDate >= monthAgo;
+        });
+        break;
+      case 'custom':
+        if (customStartDate && customEndDate) {
+          filtered = filtered.filter(record => {
+            const recordDate = new Date(record.timestamp);
+            return recordDate >= customStartDate && recordDate <= customEndDate;
+          });
+        }
+        break;
     }
 
-    const searchLower = search.toLowerCase();
-    const filtered = records.filter(record => {
-      const userName = record.user?.name?.toLowerCase() || '';
-      const userEmail = record.user?.email?.toLowerCase() || '';
-      const type = record.type.toLowerCase();
-      const ip = record.ip?.toLowerCase() || '';
+    // Apply search filter
+    if (search.trim()) {
+      const searchLower = search.toLowerCase();
+      filtered = filtered.filter(record => {
+        const userName = record.user?.name?.toLowerCase() || '';
+        const userEmail = record.user?.email?.toLowerCase() || '';
+        const type = record.type.toLowerCase();
+        const ip = record.ip?.toLowerCase() || '';
 
-      return (
-        userName.includes(searchLower) ||
-        userEmail.includes(searchLower) ||
-        type.includes(searchLower) ||
-        ip.includes(searchLower)
-      );
-    });
+        return (
+          userName.includes(searchLower) ||
+          userEmail.includes(searchLower) ||
+          type.includes(searchLower) ||
+          ip.includes(searchLower)
+        );
+      });
+    }
 
     setFilteredRecords(filtered);
-  }, [search, records]);
+  }, [search, records, dateFilter, customStartDate, customEndDate]);
 
   const formatDateTime = (timestamp: string) => {
     const date = new Date(timestamp);
@@ -164,9 +217,27 @@ const Records: React.FC = () => {
     };
   };
 
+  const getFilterLabel = () => {
+    switch (dateFilter) {
+      case 'today':
+        return 'Today';
+      case 'yesterday':
+        return 'Yesterday';
+      case 'week':
+        return 'Last 7 Days';
+      case 'month':
+        return 'Last 30 Days';
+      case 'custom':
+        return 'Custom Range';
+      default:
+        return 'All Time';
+    }
+  };
+
   const renderRecord = ({ item }: { item: AttendanceRecord }) => {
     const { date, time } = formatDateTime(item.timestamp);
     const isCheckIn = item.type === 'in';
+    const isEmployee = user?.role !== 'admin';
 
     return (
       <View style={styles.recordCard}>
@@ -185,11 +256,20 @@ const Records: React.FC = () => {
               />
             </View>
             <View style={styles.userDetails}>
-              <Text style={styles.userName}>
-                {item.user?.name || 'Unknown User'}
-              </Text>
-              {item.user?.email && (
-                <Text style={styles.userEmail}>{item.user.email}</Text>
+              {!isEmployee && (
+                <>
+                  <Text style={styles.userName}>
+                    {item.user?.name || 'Unknown User'}
+                  </Text>
+                  {item.user?.email && (
+                    <Text style={styles.userEmail}>{item.user.email}</Text>
+                  )}
+                </>
+              )}
+              {isEmployee && (
+                <Text style={styles.userName}>
+                  {isCheckIn ? 'Checked In' : 'Checked Out'}
+                </Text>
               )}
             </View>
           </View>
@@ -259,16 +339,29 @@ const Records: React.FC = () => {
         </Pressable>
       </View>
 
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <Icon name="search" size={18} color="#94a3b8" />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search by name, email, or IP..."
-          placeholderTextColor="#94a3b8"
-          value={search}
-          onChangeText={setSearch}
-        />
+      {/* Search Bar & Filter */}
+      <View style={styles.searchFilterRow}>
+        <View style={styles.searchContainer}>
+          <Icon name="search" size={18} color="#94a3b8" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder={
+              user?.role === 'admin'
+                ? 'Search by name, email, or IP...'
+                : 'Search...'
+            }
+            placeholderTextColor="#94a3b8"
+            value={search}
+            onChangeText={setSearch}
+          />
+        </View>
+        <Pressable
+          style={styles.filterButton}
+          onPress={() => setShowFilterModal(true)}
+        >
+          <Icon name="filter" size={18} color="#6366f1" />
+          <Text style={styles.filterButtonText}>{getFilterLabel()}</Text>
+        </Pressable>
       </View>
 
       {/* Stats */}
@@ -318,6 +411,75 @@ const Records: React.FC = () => {
           </View>
         }
       />
+
+      {/* Filter Modal */}
+      <Modal
+        visible={showFilterModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowFilterModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowFilterModal(false)}
+        >
+          <Pressable
+            style={styles.modalContent}
+            onPress={e => e.stopPropagation()}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Filter by Date</Text>
+              <Pressable onPress={() => setShowFilterModal(false)}>
+                <Icon name="x" size={24} color="#64748b" />
+              </Pressable>
+            </View>
+            <ScrollView style={styles.filterOptions}>
+              {(
+                ['all', 'today', 'yesterday', 'week', 'month'] as DateFilter[]
+              ).map(filter => (
+                <Pressable
+                  key={filter}
+                  style={[
+                    styles.filterOption,
+                    dateFilter === filter && styles.filterOptionActive,
+                  ]}
+                  onPress={() => {
+                    setDateFilter(filter);
+                    setShowFilterModal(false);
+                  }}
+                >
+                  <View style={styles.filterOptionContent}>
+                    <Icon
+                      name={filter === 'all' ? 'calendar' : 'clock'}
+                      size={20}
+                      color={dateFilter === filter ? '#6366f1' : '#64748b'}
+                    />
+                    <Text
+                      style={[
+                        styles.filterOptionText,
+                        dateFilter === filter && styles.filterOptionTextActive,
+                      ]}
+                    >
+                      {filter === 'all'
+                        ? 'All Time'
+                        : filter === 'today'
+                        ? 'Today'
+                        : filter === 'yesterday'
+                        ? 'Yesterday'
+                        : filter === 'week'
+                        ? 'Last 7 Days'
+                        : 'Last 30 Days'}
+                    </Text>
+                  </View>
+                  {dateFilter === filter && (
+                    <Icon name="check" size={20} color="#6366f1" />
+                  )}
+                </Pressable>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 };
@@ -352,12 +514,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  searchFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 12,
+    gap: 12,
+  },
   searchContainer: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    margin: 16,
-    marginBottom: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 12,
@@ -369,6 +538,22 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     fontSize: 15,
     color: '#0f172a',
+  },
+  filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    gap: 6,
+  },
+  filterButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6366f1',
   },
   statsContainer: {
     flexDirection: 'row',
@@ -500,6 +685,62 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     marginTop: 8,
     textAlign: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '70%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  filterOptions: {
+    padding: 16,
+  },
+  filterOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 8,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  filterOptionActive: {
+    backgroundColor: '#eef2ff',
+    borderColor: '#6366f1',
+  },
+  filterOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  filterOptionText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#64748b',
+  },
+  filterOptionTextActive: {
+    color: '#6366f1',
+    fontWeight: '600',
   },
 });
 

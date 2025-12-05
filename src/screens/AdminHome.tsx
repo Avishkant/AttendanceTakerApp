@@ -26,20 +26,24 @@ const AdminHome: React.FC = () => {
     setRefreshing(true);
     setError(null);
     try {
-      // Fetch employees and device requests
+      // Fetch employees, device requests, and recent attendance
       const [empRes, reqRes] = await Promise.allSettled([
         api.get('/api/admin/employees'),
         api.get('/api/devices/requests'),
       ]);
 
-      const s: any = { checkedIn: 42, total: 50, percent: 84 };
+      const s: any = { checkedIn: 0, total: 0, percent: 0 };
+      let employees: any[] = [];
 
       if (empRes.status === 'fulfilled') {
         const d = empRes.value?.data;
         const arr = d?.success ? d.data : d;
-        s.totalEmployees = Array.isArray(arr) ? arr.length : 0;
+        employees = Array.isArray(arr) ? arr : [];
+        s.totalEmployees = employees.length;
+        s.total = employees.length;
       } else {
         s.totalEmployees = 0;
+        s.total = 0;
       }
 
       if (reqRes.status === 'fulfilled') {
@@ -58,26 +62,68 @@ const AdminHome: React.FC = () => {
         setRequests([]);
       }
 
+      // Fetch today's attendance to calculate checked-in status
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      const checkedInUsers = new Set();
+      const recentAttendance: any[] = [];
+
+      // Fetch attendance for all employees
+      const attendancePromises = employees.map((emp: any) =>
+        api
+          .get(`/api/admin/employees/${emp._id}/attendance`, {
+            params: {
+              from: today.toISOString(),
+              to: tomorrow.toISOString(),
+              limit: 50,
+            },
+          })
+          .then((res: any) => ({
+            user: emp,
+            data: res?.data?.data || [],
+          }))
+          .catch(() => ({ user: emp, data: [] })),
+      );
+
+      const attendanceResults = await Promise.all(attendancePromises);
+
+      attendanceResults.forEach((result: any) => {
+        const records = result.data || [];
+        // Add to recent attendance for live feed
+        records.forEach((record: any) => {
+          recentAttendance.push({
+            ...record,
+            user: result.user,
+          });
+        });
+
+        // Check if user has checked in today (last record is 'in')
+        if (records.length > 0) {
+          const sortedRecords = records.sort(
+            (a: any, b: any) =>
+              new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+          );
+          const lastRecord = sortedRecords[0];
+          if (lastRecord.type === 'in') {
+            checkedInUsers.add(result.user._id);
+          }
+        }
+      });
+
+      s.checkedIn = checkedInUsers.size;
+      s.percent = s.total > 0 ? Math.round((s.checkedIn / s.total) * 100) : 0;
+
       setStats(s);
 
-      // Mock live feed data
-      setLiveFeed([
-        {
-          user: { name: 'Sarah J.' },
-          type: 'in',
-          timestamp: new Date().toISOString(),
-        },
-        {
-          user: { name: 'Sarah J.' },
-          type: 'in',
-          timestamp: new Date().toISOString(),
-        },
-        {
-          user: { name: 'Sarah J.' },
-          type: 'in',
-          timestamp: new Date().toISOString(),
-        },
-      ]);
+      // Sort recent attendance by timestamp and take the latest 5
+      const sortedFeed = recentAttendance.sort(
+        (a, b) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+      );
+      setLiveFeed(sortedFeed.slice(0, 5));
     } catch (e: any) {
       setError(e?.message || 'Failed to load admin stats');
     } finally {
@@ -130,108 +176,163 @@ const AdminHome: React.FC = () => {
   };
 
   return (
-    <ScrollView
-      style={styles.screen}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={load} />
-      }
-      contentContainerStyle={styles.scrollContent}
-    >
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>Dashboard</Text>
-          <Text style={styles.headerSubtitle}>{formatDate()}</Text>
+    <View style={styles.screen}>
+      <ScrollView
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={load} />
+        }
+        contentContainerStyle={styles.scrollContent}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.headerTitle}>Dashboard</Text>
+            <Text style={styles.headerSubtitle}>{formatDate()}</Text>
+          </View>
         </View>
-        <Pressable style={styles.notificationBtn}>
-          <Icon name="bell" size={20} color="#64748b" />
-          <View style={styles.notificationDot} />
-        </Pressable>
-      </View>
 
-      {/* Stats Row */}
-      <View style={styles.statsRow}>
-        {/* Attendance Card */}
-        <View style={styles.attendanceCard}>
-          <View style={styles.attendanceHeader}>
-            <Text style={styles.attendanceTitle}>ATTENDANCE</Text>
-            <View style={styles.activeIndicator}>
-              <View style={styles.activeDot} />
+        {/* Stats Row */}
+        <View style={styles.statsRow}>
+          {/* Attendance Card */}
+          <View style={styles.attendanceCard}>
+            <View style={styles.attendanceHeader}>
+              <Text style={styles.attendanceTitle}>ATTENDANCE</Text>
+              <View style={styles.activeIndicator}>
+                <View style={styles.activeDot} />
+              </View>
             </View>
-          </View>
-          <Text style={styles.attendancePercent}>{stats?.percent ?? 84}%</Text>
-          <Text style={styles.attendanceSubtext}>
-            {stats?.checkedIn ?? 42}/{stats?.total ?? 50} Checked in
-          </Text>
-        </View>
-
-        {/* Requests Card */}
-        <View style={styles.requestsCard}>
-          <Text style={styles.requestsTitle}>REQUESTS</Text>
-          <Text style={styles.requestsCount}>
-            {(stats?.pendingRequests ?? 3).toString().padStart(2, '0')}
-          </Text>
-          <Text style={styles.requestsSubtext}>Requires Approval</Text>
-        </View>
-      </View>
-
-      {/* Administration Section */}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>ADMINISTRATION</Text>
-      </View>
-      <View style={styles.adminRow}>
-        <Pressable
-          style={styles.adminCard}
-          onPress={() => navigation.navigate('IPRestrictions')}
-        >
-          <View style={styles.adminIconContainer}>
-            <Icon name="shield" size={24} color="#6366f1" />
-          </View>
-          <Text style={styles.adminTitle}>IP Config</Text>
-          <Text style={styles.adminSubtitle}>Manage allowed networks</Text>
-        </Pressable>
-
-        <Pressable
-          style={styles.adminCard}
-          onPress={() => navigation.navigate('Records')}
-        >
-          <View style={styles.adminIconContainer}>
-            <Icon name="file-text" size={24} color="#10b981" />
-          </View>
-          <Text style={styles.adminTitle}>Records</Text>
-          <Text style={styles.adminSubtitle}>View full history logs</Text>
-        </Pressable>
-      </View>
-
-      {/* Live Feed Section */}
-      <View style={styles.liveFeedHeader}>
-        <Text style={styles.sectionTitle}>LIVE FEED</Text>
-        <Pressable>
-          <Text style={styles.viewAllBtn}>View All</Text>
-        </Pressable>
-      </View>
-
-      {liveFeed.map((item, idx) => (
-        <View key={idx} style={styles.feedItem}>
-          <View style={styles.feedIndicator}>
-            <View style={styles.feedDot} />
-          </View>
-          <View style={styles.feedContent}>
-            <Text style={styles.feedText}>
-              <Text style={styles.feedName}>
-                {item.user?.name || 'Sarah J.'}
-              </Text>{' '}
-              <Text style={styles.feedAction}>
-                {item.type === 'in' ? 'checked in.' : 'checked out.'}
-              </Text>
+            <Text style={styles.attendancePercent}>
+              {stats?.percent ?? 84}%
             </Text>
-            <Text style={styles.feedTime}>2m ago</Text>
+            <Text style={styles.attendanceSubtext}>
+              {stats?.checkedIn ?? 42}/{stats?.total ?? 50} Checked in
+            </Text>
+          </View>
+
+          {/* Requests Card */}
+          <View style={styles.requestsCard}>
+            <Text style={styles.requestsTitle}>REQUESTS</Text>
+            <Text style={styles.requestsCount}>
+              {(stats?.pendingRequests ?? 3).toString().padStart(2, '0')}
+            </Text>
+            <Text style={styles.requestsSubtext}>Requires Approval</Text>
           </View>
         </View>
-      ))}
 
-      <View style={styles.bottomSpacer} />
-    </ScrollView>
+        {/* Administration Section */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>ADMINISTRATION</Text>
+        </View>
+        <View style={styles.adminRow}>
+          <Pressable
+            style={styles.adminCard}
+            onPress={() => navigation.navigate('IPRestrictions')}
+          >
+            <View
+              style={[
+                styles.adminIconContainer,
+                { backgroundColor: '#ede9fe' },
+              ]}
+            >
+              <Icon name="shield" size={24} color="#6366f1" />
+            </View>
+            <Text style={styles.adminTitle}>IP Config</Text>
+            <Text style={styles.adminSubtitle}>Manage allowed networks</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.adminCard}
+            onPress={() => navigation.navigate('Records')}
+          >
+            <View
+              style={[
+                styles.adminIconContainer,
+                { backgroundColor: '#d1fae5' },
+              ]}
+            >
+              <Icon name="file-text" size={24} color="#10b981" />
+            </View>
+            <Text style={styles.adminTitle}>Records</Text>
+            <Text style={styles.adminSubtitle}>View full history logs</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.adminRow}>
+          <Pressable
+            style={styles.adminCard}
+            onPress={() =>
+              Alert.alert('Analytics', 'Analytics feature coming soon!')
+            }
+          >
+            <View
+              style={[
+                styles.adminIconContainer,
+                { backgroundColor: '#dbeafe' },
+              ]}
+            >
+              <Icon name="bar-chart-2" size={24} color="#3b82f6" />
+            </View>
+            <Text style={styles.adminTitle}>Analytics</Text>
+            <Text style={styles.adminSubtitle}>View detailed reports</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.adminCard}
+            onPress={() =>
+              Alert.alert('Settings', 'Settings feature coming soon!')
+            }
+          >
+            <View
+              style={[
+                styles.adminIconContainer,
+                { backgroundColor: '#fef3c7' },
+              ]}
+            >
+              <Icon name="settings" size={24} color="#f59e0b" />
+            </View>
+            <Text style={styles.adminTitle}>Settings</Text>
+            <Text style={styles.adminSubtitle}>App configuration</Text>
+          </Pressable>
+        </View>
+
+        {/* Live Feed Section */}
+        <View style={styles.liveFeedHeader}>
+          <Text style={styles.sectionTitle}>LIVE FEED</Text>
+          <Pressable>
+            <Text style={styles.viewAllBtn}>View All</Text>
+          </Pressable>
+        </View>
+
+        {liveFeed.length > 0 ? (
+          liveFeed.map((item, idx) => (
+            <View key={idx} style={styles.feedItem}>
+              <View style={styles.feedIndicator}>
+                <View style={styles.feedDot} />
+              </View>
+              <View style={styles.feedContent}>
+                <Text style={styles.feedText}>
+                  <Text style={styles.feedName}>
+                    {item.user?.name || 'Unknown User'}
+                  </Text>{' '}
+                  <Text style={styles.feedAction}>
+                    {item.type === 'in' ? 'checked in.' : 'checked out.'}
+                  </Text>
+                </Text>
+                <Text style={styles.feedTime}>
+                  {getTimeAgo(item.timestamp)}
+                </Text>
+              </View>
+            </View>
+          ))
+        ) : (
+          <View style={styles.feedEmpty}>
+            <Text style={styles.feedEmptyText}>No recent activity</Text>
+          </View>
+        )}
+
+        <View style={styles.bottomSpacer} />
+      </ScrollView>
+    </View>
   );
 };
 
@@ -258,19 +359,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#64748b',
     marginTop: 2,
-  },
-  notificationBtn: {
-    position: 'relative',
-    padding: 8,
-  },
-  notificationDot: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#ef4444',
   },
   statsRow: {
     flexDirection: 'row',
@@ -428,6 +516,14 @@ const styles = StyleSheet.create({
   },
   feedTime: {
     fontSize: 12,
+    color: '#94a3b8',
+  },
+  feedEmpty: {
+    paddingVertical: 24,
+    alignItems: 'center',
+  },
+  feedEmptyText: {
+    fontSize: 13,
     color: '#94a3b8',
   },
   bottomSpacer: {
