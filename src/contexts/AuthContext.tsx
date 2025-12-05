@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api, { setUnauthorizedHandler } from '../api/client';
+import { BASE_URL } from '../config/server';
 
 type User = {
   id: string;
@@ -76,6 +77,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const signIn = async (email: string, password: string) => {
     try {
+      // Log the target URL and credentials (email only) for debugging network issues
+      // eslint-disable-next-line no-console
+      console.debug('[auth] signIn ->', {
+        url: `${BASE_URL}/api/auth/login`,
+        email,
+      });
       const res = await api.post('/api/auth/login', { email, password });
       if (!res || !res.data || !res.data.success) {
         throw new Error(res?.data?.message || 'Login failed');

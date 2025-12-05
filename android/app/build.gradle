@@ -2,22 +2,13 @@ apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
-// Ensure react-native-vector-icons fonts are copied into the Android assets
-// This is required on some setups to ensure icon fonts are bundled correctly.
-apply from: "../../node_modules/react-native-vector-icons/fonts.gradle"
-
-// Backwards-compatible fallback: ensure fonts are present under app/src/main/assets/fonts
-// Some environments don't pick up the intermediate assets folder. This copies the
-// font files into the explicit assets folder so the runtime can always find them.
-task copyVectorIconFontsToAssets(type: Copy) {
-    def fontsDir = file('../../node_modules/react-native-vector-icons/Fonts')
-    def destDir = file('src/main/assets/fonts')
-    from(fontsDir)
-    into(destDir)
-    include('*.ttf')
-}
-
-preBuild.dependsOn(copyVectorIconFontsToAssets)
+// Vector icon fonts: we'll bundle fonts from `src/main/assets/fonts` directly.
+// Removed the default `fonts.gradle` apply to prevent duplicate copies
+// under both `src/main/assets/fonts` and build intermediates.
+// Note: removed a fallback copy task that duplicated font files under
+// `src/main/assets/fonts`. The project relies on the `fonts.gradle` script
+// from `react-native-vector-icons` to register fonts; keeping an extra copy
+// caused duplicate resource errors during asset merging.
 
 /**
  * This is the configuration block to customize your React Native Android app.

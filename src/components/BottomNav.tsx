@@ -1,21 +1,18 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Icon from './Icon';
-import theme from '../theme';
-import { useAuth } from '../contexts/AuthContext';
 
 type NavItem = {
   key: string;
   label: string;
   icon: string;
-  onPress?: () => void;
 };
 
 const items: NavItem[] = [
   { key: 'home', label: 'Home', icon: 'home' },
   { key: 'employees', label: 'Employees', icon: 'users' },
-  { key: 'requests', label: 'Requests', icon: 'inbox' },
-  { key: 'records', label: 'Records', icon: 'calendar' },
+  { key: 'requests', label: 'Requests', icon: 'clipboard' },
+  { key: 'menu', label: 'Menu', icon: 'menu' },
 ];
 
 type Props = {
@@ -23,32 +20,35 @@ type Props = {
 };
 
 const BottomNav: React.FC<Props> = ({ onNavigate }) => {
-  const { signOut } = useAuth();
+  const [active, setActive] = useState('home');
+
+  const handlePress = (key: string) => {
+    setActive(key);
+    if (onNavigate) onNavigate(key);
+  };
 
   return (
-    <View style={styles.container} pointerEvents="box-none">
+    <View style={styles.container}>
       <View style={styles.nav}>
-        {items.map(it => (
-          <TouchableOpacity
-            key={it.key}
-            style={styles.item}
-            accessibilityRole="button"
-            accessibilityLabel={it.label}
-            onPress={() => onNavigate && onNavigate(it.key)}
-          >
-            <Icon name={it.icon} size={20} color={theme.COLORS.white} />
-            <Text style={styles.label}>{it.label}</Text>
-          </TouchableOpacity>
-        ))}
-
-        <TouchableOpacity
-          style={styles.logoutItem}
-          accessibilityRole="button"
-          accessibilityLabel="Logout"
-          onPress={() => signOut()}
-        >
-          <Icon name="log-out" size={18} color={theme.COLORS.white} />
-        </TouchableOpacity>
+        {items.map(it => {
+          const isActive = active === it.key;
+          return (
+            <Pressable
+              key={it.key}
+              style={styles.item}
+              onPress={() => handlePress(it.key)}
+            >
+              <Icon
+                name={it.icon}
+                size={22}
+                color={isActive ? '#6366f1' : '#64748b'}
+              />
+              <Text style={[styles.label, isActive && styles.labelActive]}>
+                {it.label}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
     </View>
   );
@@ -57,29 +57,34 @@ const BottomNav: React.FC<Props> = ({ onNavigate }) => {
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 28,
-    alignItems: 'center',
-    zIndex: 50,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+    paddingBottom: 8,
   },
   nav: {
     flexDirection: 'row',
-    backgroundColor: theme.COLORS.primaryDark,
-    borderRadius: 28,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
     alignItems: 'center',
-    width: '100%',
-    ...theme.SHADOW,
+    paddingTop: 8,
   },
-  item: { flex: 1, alignItems: 'center' },
-  label: { color: theme.COLORS.white, fontSize: 11, marginTop: 4 },
-  logoutItem: {
-    paddingHorizontal: 10,
+  item: {
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  label: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 4,
+    fontWeight: '500',
+  },
+  labelActive: {
+    color: '#6366f1',
+    fontWeight: '700',
   },
 });
 

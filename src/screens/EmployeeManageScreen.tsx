@@ -1,29 +1,22 @@
-import React, { useEffect, useState } from 'react';
-import { Platform } from 'react-native';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  Button,
   Alert,
   TextInput,
   FlatList,
   ActivityIndicator,
-  Modal,
-  TouchableOpacity,
+  ScrollView,
+  Pressable,
   Image,
 } from 'react-native';
 import api from '../api/client';
-import ConfirmCard from '../components/ConfirmCard';
-import AttendanceBadge from '../components/AttendanceBadge';
 import PrimaryButton from '../components/PrimaryButton';
 import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
-import DatePicker from 'react-native-date-picker';
-import Container from '../components/Container';
-import AnimatedCard from '../components/AnimatedCard';
+import Icon from '../components/Icon';
 import theme from '../theme';
-
-type RouteParams = { params: { employeeId: string } };
+import DatePicker from 'react-native-date-picker';
 
 const EmployeeManageScreen: React.FC = () => {
   const route =
@@ -53,6 +46,7 @@ const EmployeeManageScreen: React.FC = () => {
   const [showSavedCard, setShowSavedCard] = useState(false);
   const [showDeregisterConfirm, setShowDeregisterConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
   // Date/time picker state (using react-native-date-picker)
   const [showPicker, setShowPicker] = useState(false);
   const [pickerTarget, setPickerTarget] = useState<
@@ -239,45 +233,74 @@ const EmployeeManageScreen: React.FC = () => {
     }
   };
 
+  // Compute last 7 days activity for chart
+  const chartData = useMemo(() => {
+    const week = [0, 0, 0, 0, 0, 0, 0];
+    attendance.forEach(a => {
+      try {
+        const d = new Date(a.timestamp);
+        const day = d.getDay();
+        week[day] = (week[day] || 0) + 1;
+      } catch (e) {}
+    });
+    return week;
+  }, [attendance]);
+
   if (loading)
     return (
-      <View style={{ flex: 1, justifyContent: 'center' }}>
-        <Text>Loading...</Text>
+      <View style={styles.centerContainer}>
+        <ActivityIndicator size="large" color={theme.COLORS.primary} />
       </View>
     );
 
   if (error)
     return (
-      <View style={{ flex: 1, justifyContent: 'center', padding: 12 }}>
-        <Text style={{ color: '#900', marginBottom: 12 }}>{error}</Text>
-        <Button title="Retry" onPress={load} />
+      <View style={styles.centerContainer}>
+        <Text style={styles.errorText}>{error}</Text>
+        <PrimaryButton title="Retry" onPress={load} style={styles.retryBtn} />
       </View>
     );
 
   if (!employee)
     return (
-      <View style={{ flex: 1, justifyContent: 'center' }}>
-        <Text>No employee data</Text>
+      <View style={styles.centerContainer}>
+        <Text style={styles.errorText}>No employee data</Text>
       </View>
     );
 
+  const maxHours = 12;
+
   return (
-    <Container scroll contentContainerStyle={{ padding: theme.SPACING.md }}>
-      {/* Profile header */}
-      <AnimatedCard style={{ marginBottom: theme.SPACING.sm }}>
+    <View style={styles.screen}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Icon name="arrow-left" size={20} color="#1e293b" />
+        </Pressable>
+        <Text style={styles.headerTitle}>Employee Details</Text>
         <View
-          style={[styles.profileCard, { backgroundColor: theme.COLORS.card }]}
+          style={[
+            styles.statusBadge,
+            employee.status === 'Active'
+              ? styles.statusActive
+              : styles.statusInactive,
+          ]}
         >
-          <View style={styles.profileRow}>
-            <View style={styles.avatar}>
-              {employee?.avatar ? (
-                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                // @ts-ignore
-                <Image
-                  source={{ uri: employee.avatar }}
-                  style={styles.avatarImage}
-                />
-              ) : (
+          <Text style={styles.statusText}>{employee.status || 'Active'}</Text>
+        </View>
+      </View>
+
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {/* Profile Section */}
+        <View style={styles.profileSection}>
+          <View style={styles.avatarContainer}>
+            {employee?.avatar ? (
+              <Image source={{ uri: employee.avatar }} style={styles.avatar} />
+            ) : (
+              <View style={styles.avatarPlaceholder}>
                 <Text style={styles.avatarInitials}>
                   {String(employee.name || '?')
                     .split(' ')
@@ -285,434 +308,1070 @@ const EmployeeManageScreen: React.FC = () => {
                     .slice(0, 2)
                     .join('')}
                 </Text>
-              )}
-            </View>
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={styles.title}>{employee.name}</Text>
-              <Text style={styles.role}>
-                {employee.role || employee?.position || 'Employee'}
-              </Text>
-            </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.smallLabel}>Working Hours</Text>
-              <Text style={styles.hoursValue}>7h 21m</Text>
-            </View>
-          </View>
-
-          {/* Simple weekly bar chart computed from attendance timestamps */}
-          <View style={styles.chartRow}>
-            {(() => {
-              const week = [0, 0, 0, 0, 0, 0, 0];
-              attendance.forEach(a => {
-                try {
-                  const d = new Date(a.timestamp);
-                  const day = d.getDay();
-                  week[day] = (week[day] || 0) + 1;
-                } catch (e) {}
-              });
-              const max = Math.max(...week, 1);
-              return week.map((v, i) => (
-                <View key={i} style={styles.barWrap}>
-                  <View style={[styles.bar, { height: 36 * (v / max) + 6 }]} />
-                  <Text style={styles.barLabel}>{'SMTWTFS'[i] || '·'}</Text>
-                </View>
-              ));
-            })()}
-          </View>
-
-          {/* Attendance badges */}
-          <View style={styles.badgesRow}>
-            <AttendanceBadge
-              label="Working Day"
-              value={attendance.filter(a => a.type === 'in').length || '—'}
-              color="#E6F0FF"
-            />
-            <AttendanceBadge label="Absent" value={'—'} color="#FFE8D6" />
-            <AttendanceBadge label="Late Log" value={'—'} color="#FFE6F0" />
-          </View>
-
-          <View style={styles.badgesRow}>
-            <AttendanceBadge label="Half Day" value={'—'} color="#E6FFF2" />
-            <AttendanceBadge
-              label="One Day Leaves"
-              value={'—'}
-              color="#F0E6FF"
-            />
-            <AttendanceBadge label="Sick Leaves" value={'—'} color="#E6F0FF" />
-          </View>
-        </View>
-      </AnimatedCard>
-
-      <View style={{ marginTop: theme.SPACING.md }}>
-        <Text style={styles.sectionLabel}>Profile</Text>
-        <Text style={{ marginBottom: 6 }}>Name</Text>
-        <TextInput
-          value={editingName}
-          onChangeText={setEditingName}
-          style={[
-            styles.input,
-            {
-              backgroundColor: theme.COLORS.cardElevated,
-              color: theme.COLORS.black,
-            },
-          ]}
-        />
-        <View style={{ marginTop: 8 }}>
-          <PrimaryButton title="Save" onPress={save} icon="💾" />
-        </View>
-      </View>
-
-      <View style={{ marginTop: theme.SPACING.md }}>
-        <Button
-          title="Deregister Device"
-          onPress={deregister}
-          color="#f59e0b"
-        />
-      </View>
-
-      <View style={{ marginTop: theme.SPACING.md }}>
-        <Text style={{ fontWeight: '700', marginBottom: 6 }}>
-          Registered Device
-        </Text>
-        <Text>{employee?.registeredDevice?.id || 'No device registered'}</Text>
-      </View>
-
-      <View style={{ marginTop: theme.SPACING.md }}>
-        <Text style={{ fontWeight: '700', marginBottom: 6 }}>
-          Reset Password
-        </Text>
-        <TextInput
-          placeholder="New password"
-          value={resetPassword}
-          onChangeText={setResetPassword}
-          secureTextEntry
-          style={[
-            styles.input,
-            {
-              backgroundColor: theme.COLORS.cardElevated,
-              color: theme.COLORS.black,
-            },
-          ]}
-        />
-        {resetting ? (
-          <ActivityIndicator />
-        ) : (
-          <Button title="Reset Password" onPress={submitResetPassword} />
-        )}
-      </View>
-
-      <View style={{ marginTop: theme.SPACING.md }}>
-        <Text style={{ fontWeight: '700', marginBottom: 6 }}>
-          Add Attendance Mark
-        </Text>
-        <View style={styles.row}>
-          <TouchableOpacity
-            style={[
-              styles.typeButton,
-              markType === 'in' ? styles.typeButtonActive : null,
-            ]}
-            onPress={() => setMarkType('in')}
-          >
-            <Text
-              style={[
-                styles.typeButtonText,
-                markType === 'in' ? styles.typeButtonTextActive : null,
-              ]}
-            >
-              IN
-            </Text>
-          </TouchableOpacity>
-          <View style={{ width: 8 }} />
-          <TouchableOpacity
-            style={[
-              styles.typeButton,
-              markType === 'out' ? styles.typeButtonActive : null,
-            ]}
-            onPress={() => setMarkType('out')}
-          >
-            <Text
-              style={[
-                styles.typeButtonText,
-                markType === 'out' ? styles.typeButtonTextActive : null,
-              ]}
-            >
-              OUT
-            </Text>
-          </TouchableOpacity>
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text
-            style={{
-              flex: 1,
-              padding: 8,
-              borderWidth: 1,
-              borderColor: 'rgba(0,0,0,0.06)',
-              borderRadius: 6,
-              backgroundColor: theme.COLORS.cardElevated,
-              color: theme.COLORS.black,
-            }}
-          >
-            {new Date(markTimestamp).toLocaleString()}
-          </Text>
-          <View style={{ width: 8 }} />
-          <Button title="Pick" onPress={() => openPicker('mark')} />
-        </View>
-        <View style={{ flexDirection: 'row', marginTop: 6 }}>
-          <View style={{ flex: 1, marginRight: 8 }}>
-            <Button
-              title="Set to now"
-              onPress={() => setMarkTimestamp(new Date().toISOString())}
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Button title="Add Mark" onPress={submitMark} />
-          </View>
-        </View>
-        <TextInput
-          placeholder="Note (optional)"
-          value={markNote}
-          onChangeText={setMarkNote}
-          style={[styles.input, { marginTop: 8 }]}
-        />
-      </View>
-
-      <View style={{ marginTop: theme.SPACING.md }}>
-        <Text style={{ fontWeight: '700', marginBottom: 6 }}>
-          Attendance Records
-        </Text>
-        <View style={{ flexDirection: 'row', marginBottom: 8 }}>
-          <Text
-            style={[styles.input, { flex: 1, marginRight: 8 }]}
-            onPress={() => openPicker('from')}
-          >
-            {new Date(fromDate).toLocaleString()}
-          </Text>
-          <Text
-            style={[styles.input, { flex: 1 }]}
-            onPress={() => openPicker('to')}
-          >
-            {new Date(toDate).toLocaleString()}
-          </Text>
-        </View>
-        <View style={{ flexDirection: 'row', marginBottom: 8 }}>
-          <View style={{ flex: 1, marginRight: 8 }}>
-            <Button
-              title="Load"
-              onPress={() => loadAttendance(fromDate, toDate)}
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Button
-              title="Set Today"
-              onPress={() => {
-                setFromDate(
-                  new Date(new Date().setHours(0, 0, 0, 0)).toISOString(),
-                );
-                setToDate(
-                  new Date(new Date().setHours(23, 59, 59, 999)).toISOString(),
-                );
-              }}
-            />
-          </View>
-        </View>
-        {attLoading ? (
-          <ActivityIndicator />
-        ) : (
-          <View>
-            {attendance && attendance.length > 0 ? (
-              attendance.map((item: any) => (
-                <View
-                  key={item._id}
-                  style={{
-                    paddingVertical: 8,
-                    borderBottomWidth: 1,
-                    borderBottomColor: '#eee',
-                  }}
-                >
-                  <Text style={{ fontWeight: '700' }}>
-                    {item.type?.toUpperCase()} -{' '}
-                    {new Date(item.timestamp).toLocaleString()}
-                  </Text>
-                  <Text>{item.note || ''}</Text>
-                </View>
-              ))
-            ) : (
-              <Text style={{ padding: 8 }}>No records</Text>
+              </View>
             )}
+            <Pressable style={styles.avatarEditBtn}>
+              <Icon name="user" size={14} color="#fff" />
+            </Pressable>
           </View>
-        )}
-      </View>
+          <Text style={styles.employeeName}>{employee.name}</Text>
+          <Text style={styles.employeeRole}>
+            {employee.role || employee?.position || 'Senior Developer'}
+          </Text>
+          <View style={styles.emailBadge}>
+            <Icon name="mail" size={14} color="#64748b" />
+            <Text style={styles.emailText}>{employee.email}</Text>
+          </View>
+        </View>
 
-      {showPicker ? (
-        <Modal visible transparent animationType="slide">
-          <View
-            style={{
-              flex: 1,
-              backgroundColor: 'rgba(0,0,0,0.4)',
-              justifyContent: 'center',
-              padding: 20,
-            }}
+        {/* Quick Actions */}
+        <View style={styles.quickActions}>
+          <Pressable
+            style={[styles.actionBtn, styles.actionBtnSecondary]}
+            onPress={() => setShowPasswordModal(true)}
           >
-            <AnimatedCard style={{ padding: 12 }}>
-              <Text style={{ fontWeight: '700', marginBottom: 8 }}>
-                Pick Date & Time
-              </Text>
-              <DatePicker
-                date={pickerDate}
-                onDateChange={setPickerDate}
-                mode="datetime"
-                androidVariant="iosClone"
-                textColor={
-                  Platform.OS === 'android' ? theme.COLORS.black : undefined
-                }
-                style={{ backgroundColor: theme.COLORS.card }}
-              />
-              <View
-                style={{
-                  flexDirection: 'row',
-                  justifyContent: 'flex-end',
-                  marginTop: 12,
+            <Icon name="lock" size={16} color="#1e293b" />
+            <Text style={styles.actionBtnSecondaryText}>Password</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.actionBtn, styles.actionBtnDanger]}
+            onPress={() => setShowDeleteConfirm(true)}
+          >
+            <Icon name="trash-2" size={16} color="#dc2626" />
+            <Text style={styles.actionBtnDangerText}>Delete User</Text>
+          </Pressable>
+        </View>
+
+        {/* Work Activity Card */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardHeaderLeft}>
+              <Icon name="clock" size={18} color="#6366f1" />
+              <Text style={styles.cardTitle}>Work Activity</Text>
+            </View>
+            <Text style={styles.cardSubtitle}>Last 7 Days</Text>
+          </View>
+          <View style={styles.chartContainer}>
+            {chartData.map((val, i) => {
+              const height = Math.min((val / maxHours) * 100, 100);
+              const isLow = val < 5;
+              const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][
+                i
+              ];
+              return (
+                <View key={i} style={styles.chartBar}>
+                  <View style={styles.chartBarInner}>
+                    <View
+                      style={[
+                        styles.bar,
+                        { height: `${height}%` },
+                        isLow ? styles.barLow : styles.barNormal,
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.chartLabel}>{dayName}</Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Registered Device Card */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Registered Device</Text>
+          {employee?.registeredDevice?.id ? (
+            <View style={styles.deviceRow}>
+              <View style={styles.deviceInfo}>
+                <Text style={styles.deviceName}>
+                  {employee?.registeredDevice?.name || "Employee's Device"}
+                </Text>
+                <Text style={styles.deviceId}>
+                  {employee?.registeredDevice?.id}
+                </Text>
+              </View>
+              <Pressable onPress={deregister} style={styles.deregisterBtn}>
+                <Text style={styles.deregisterText}>Deregister</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.noDevice}>
+              <Icon name="alert-triangle" size={24} color="#cbd5e1" />
+              <Text style={styles.noDeviceText}>No device registered</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Update Attendance Card */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Update Attendance</Text>
+          <View style={styles.grid2}>
+            <View style={styles.gridItem}>
+              <Text style={styles.inputLabel}>Select Date</Text>
+              <Pressable
+                style={styles.dateInputContainer}
+                onPress={() => {
+                  setPickerTarget('mark');
+                  setPickerDate(new Date(markTimestamp));
+                  setShowPicker(true);
                 }}
               >
-                <View style={{ marginRight: 8 }}>
-                  <Button title="Cancel" onPress={() => setShowPicker(false)} />
-                </View>
-                <Button
-                  title="Save"
-                  onPress={() => {
-                    const iso = pickerDate.toISOString();
-                    if (pickerTarget === 'mark') setMarkTimestamp(iso);
-                    else if (pickerTarget === 'from') setFromDate(iso);
-                    else if (pickerTarget === 'to') setToDate(iso);
-                    setShowPicker(false);
+                <Text style={styles.dateInputText}>
+                  {new Date(markTimestamp).toLocaleDateString('en-GB', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                  })}
+                </Text>
+                <Icon name="calendar" size={18} color="#64748b" />
+              </Pressable>
+            </View>
+            <View style={styles.gridItem}>
+              <Text style={styles.inputLabel}>Select Time</Text>
+              <TextInput
+                value={new Date(markTimestamp).toLocaleTimeString('en-GB', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+                onChangeText={text => {
+                  // Simple time parser HH:MM
+                  const match = text.match(/^(\d{1,2}):(\d{2})$/);
+                  if (match) {
+                    const date = new Date(markTimestamp);
+                    date.setHours(
+                      parseInt(match[1], 10),
+                      parseInt(match[2], 10),
+                    );
+                    setMarkTimestamp(date.toISOString());
+                  }
+                }}
+                placeholder="--:--"
+                style={styles.input}
+                placeholderTextColor="#94a3b8"
+              />
+            </View>
+          </View>
+          <View style={styles.grid2}>
+            <Pressable
+              style={[styles.markBtn, styles.markBtnIn]}
+              onPress={() => {
+                setMarkType('in');
+                submitMark();
+              }}
+            >
+              <Icon name="log-in" size={16} color="#059669" />
+              <Text style={styles.markBtnInText}>Mark In</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.markBtn, styles.markBtnOut]}
+              onPress={() => {
+                setMarkType('out');
+                submitMark();
+              }}
+            >
+              <Icon name="log-out" size={16} color="#d97706" />
+              <Text style={styles.markBtnOutText}>Mark Out</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {/* Attendance Log Card */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Attendance Log</Text>
+
+          {/* Filter Range */}
+          <View style={styles.filterRange}>
+            <View style={styles.filterHeader}>
+              <Icon name="search" size={14} color="#94a3b8" />
+              <Text style={styles.filterTitle}>FILTER RANGE</Text>
+            </View>
+            <View style={styles.filterInputs}>
+              <Pressable
+                style={styles.rangeInputContainer}
+                onPress={() => {
+                  setPickerTarget('from');
+                  setPickerDate(new Date(fromDate));
+                  setShowPicker(true);
+                }}
+              >
+                <Text style={styles.rangeInputText}>
+                  {new Date(fromDate).toLocaleDateString('en-GB', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                  })}
+                </Text>
+                <Icon name="calendar" size={14} color="#64748b" />
+              </Pressable>
+              <Text style={styles.rangeSeparator}>-</Text>
+              <Pressable
+                style={styles.rangeInputContainer}
+                onPress={() => {
+                  setPickerTarget('to');
+                  setPickerDate(new Date(toDate));
+                  setShowPicker(true);
+                }}
+              >
+                <Text style={styles.rangeInputText}>
+                  {new Date(toDate).toLocaleDateString('en-GB', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                  })}
+                </Text>
+                <Icon name="calendar" size={14} color="#64748b" />
+              </Pressable>
+              <Pressable
+                style={styles.rangeBtn}
+                onPress={() => loadAttendance(fromDate, toDate)}
+              >
+                <Icon name="chevron-right" size={16} color="#fff" />
+              </Pressable>
+            </View>
+          </View>
+
+          {/* Attendance List */}
+          {attLoading ? (
+            <ActivityIndicator style={styles.loader} />
+          ) : (
+            <View style={styles.logList}>
+              {attendance && attendance.length > 0 ? (
+                <FlatList
+                  data={attendance}
+                  scrollEnabled={false}
+                  keyExtractor={item => item._id}
+                  renderItem={({ item }) => {
+                    const date = new Date(item.timestamp);
+                    const day = date.getDate();
+                    const month = date.toLocaleDateString('en-US', {
+                      month: 'short',
+                    });
+                    const time = date.toLocaleTimeString('en-US', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    });
+                    const isCheckIn = item.type === 'in';
+
+                    return (
+                      <View style={styles.logItem}>
+                        <View style={styles.logLeft}>
+                          <View style={styles.logDate}>
+                            <Text style={styles.logDay}>{day}</Text>
+                            <Text style={styles.logMonth}>
+                              {month.toUpperCase()}
+                            </Text>
+                          </View>
+                          <View style={styles.logDetails}>
+                            <View style={styles.logTimeRow}>
+                              <View style={styles.logTimeItem}>
+                                <Icon name="log-in" size={12} color="#059669" />
+                                <Text style={styles.logTime}>
+                                  {isCheckIn ? time : '--:--'}
+                                </Text>
+                              </View>
+                              <View style={styles.logTimeItem}>
+                                <Icon
+                                  name="log-out"
+                                  size={12}
+                                  color="#d97706"
+                                />
+                                <Text style={styles.logTime}>
+                                  {!isCheckIn ? time : '--:--'}
+                                </Text>
+                              </View>
+                            </View>
+                            <Text style={styles.logDuration}>
+                              Duration: -- hrs
+                            </Text>
+                          </View>
+                        </View>
+                        <View
+                          style={[
+                            styles.statusDot,
+                            isCheckIn
+                              ? styles.statusDotIn
+                              : styles.statusDotOut,
+                          ]}
+                        />
+                      </View>
+                    );
                   }}
                 />
-              </View>
-            </AnimatedCard>
+              ) : (
+                <Text style={styles.noLogs}>
+                  No logs found for this period.
+                </Text>
+              )}
+            </View>
+          )}
+        </View>
+      </ScrollView>
+
+      {/* Date Picker Modal */}
+      {showPicker && (
+        <View style={styles.datePickerOverlay}>
+          <Pressable
+            style={styles.datePickerBackdrop}
+            onPress={() => setShowPicker(false)}
+          />
+          <View style={styles.datePickerContainer}>
+            <View style={styles.datePickerHeader}>
+              <Pressable onPress={() => setShowPicker(false)}>
+                <Text style={styles.datePickerCancel}>Cancel</Text>
+              </Pressable>
+              <Text style={styles.datePickerTitle}>Select Date</Text>
+              <Pressable
+                onPress={() => {
+                  const iso = pickerDate.toISOString();
+                  if (pickerTarget === 'mark') setMarkTimestamp(iso);
+                  else if (pickerTarget === 'from') setFromDate(iso);
+                  else if (pickerTarget === 'to') setToDate(iso);
+                  setShowPicker(false);
+                }}
+              >
+                <Text style={styles.datePickerDone}>Done</Text>
+              </Pressable>
+            </View>
+            <DatePicker
+              date={pickerDate}
+              onDateChange={setPickerDate}
+              mode="date"
+              androidVariant="iosClone"
+              textColor="#1e293b"
+              style={styles.datePicker}
+            />
           </View>
-        </Modal>
-      ) : null}
+        </View>
+      )}
 
-      <View style={{ marginTop: theme.SPACING.md }}>
-        <Button title="Delete User" onPress={remove} color="#ef4444" />
-      </View>
+      {/* Password Modal */}
+      {showPasswordModal && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Change Password</Text>
+              <Pressable
+                onPress={() => setShowPasswordModal(false)}
+                style={styles.modalClose}
+              >
+                <Icon name="x" size={20} color="#64748b" />
+              </Pressable>
+            </View>
+            <Text style={styles.modalText}>
+              Enter a new password for {employee.name}.
+            </Text>
+            <TextInput
+              placeholder="New password"
+              secureTextEntry
+              value={resetPassword}
+              onChangeText={setResetPassword}
+              style={styles.input}
+              placeholderTextColor="#94a3b8"
+            />
+            <View style={styles.modalActions}>
+              <Pressable
+                style={[styles.modalBtn, styles.modalBtnSecondary]}
+                onPress={() => {
+                  setShowPasswordModal(false);
+                  setResetPassword('');
+                }}
+              >
+                <Text style={styles.modalBtnSecondaryText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalBtn, styles.modalBtnPrimary]}
+                onPress={submitResetPassword}
+              >
+                <Text style={styles.modalBtnPrimaryText}>Update Password</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      )}
 
-      {/* Confirmation / Success cards */}
-      <ConfirmCard
-        visible={showSavedCard}
-        title="Saved"
-        subtitle="Employee updated successfully"
-        variant="success"
-        confirmText="OK"
-        onConfirm={() => setShowSavedCard(false)}
-      />
-
-      <ConfirmCard
-        visible={showDeregisterConfirm}
-        title="Deregister Device"
-        subtitle="Are you sure you want to deregister the registered device for this employee?"
-        variant="warning"
-        confirmText="Deregister"
-        cancelText="Cancel"
-        onCancel={() => setShowDeregisterConfirm(false)}
-        onConfirm={performDeregister}
-      />
-
-      <ConfirmCard
-        visible={showDeleteConfirm}
-        title="Delete Employee"
-        subtitle="This will permanently delete the employee. This action cannot be undone."
-        variant="danger"
-        iconName="delete"
-        confirmText="Delete"
-        cancelText="Cancel"
-        onCancel={() => setShowDeleteConfirm(false)}
-        onConfirm={performDelete}
-      />
-    </Container>
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, styles.deleteModalCard]}>
+            <View style={styles.deleteModalIcon}>
+              <View style={styles.deleteIconCircle}>
+                <Icon name="alert-triangle" size={32} color="#dc2626" />
+              </View>
+            </View>
+            <Text style={styles.deleteModalTitle}>Delete Employee?</Text>
+            <Text style={styles.deleteModalText}>
+              Are you sure you want to delete {employee.name}? This action
+              cannot be undone and will permanently remove all employee data
+              including attendance records.
+            </Text>
+            <View style={styles.deleteModalActions}>
+              <Pressable
+                style={[styles.modalBtn, styles.modalBtnSecondary]}
+                onPress={() => setShowDeleteConfirm(false)}
+              >
+                <Text style={styles.modalBtnSecondaryText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalBtn, styles.deleteModalBtnDanger]}
+                onPress={performDelete}
+              >
+                <Icon name="trash-2" size={16} color="#fff" />
+                <Text style={styles.deleteModalBtnText}>Delete</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      )}
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  title: { fontSize: 18, fontWeight: '700', color: theme.COLORS.black },
-  sectionLabel: {
-    fontSize: 14,
+  screen: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+  },
+  header: {
+    height: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  backBtn: {
+    padding: 8,
+    marginLeft: -8,
+  },
+  headerTitle: {
+    flex: 1,
+    fontSize: 16,
     fontWeight: '700',
-    marginBottom: 8,
-    color: theme.COLORS.muted,
+    color: '#1e293b',
+    textAlign: 'center',
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusActive: {
+    backgroundColor: '#d1fae5',
+  },
+  statusInactive: {
+    backgroundColor: '#fee2e2',
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#065f46',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 16,
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  retryBtn: {
+    marginTop: 12,
+  },
+  errorText: {
+    color: '#dc2626',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  profileSection: {
+    alignItems: 'center',
+    paddingVertical: 24,
+  },
+  avatarContainer: {
+    position: 'relative',
+  },
+  avatar: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+  },
+  avatarPlaceholder: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: '#e2e8f0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitials: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#64748b',
+  },
+  avatarEditBtn: {
+    position: 'absolute',
+    right: -4,
+    bottom: -4,
+    backgroundColor: '#6366f1',
+    padding: 8,
+    borderRadius: 20,
+    borderWidth: 3,
+    borderColor: '#fff',
+  },
+  employeeName: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1e293b',
+    marginTop: 12,
+  },
+  employeeRole: {
+    fontSize: 14,
+    color: '#64748b',
+    marginTop: 4,
+  },
+  emailBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+    marginTop: 8,
+  },
+  emailText: {
+    fontSize: 13,
+    color: '#64748b',
+    marginLeft: 6,
+  },
+  quickActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  actionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  actionBtnSecondary: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  actionBtnSecondaryText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginLeft: 6,
+  },
+  actionBtnDanger: {
+    backgroundColor: '#fef2f2',
+    borderWidth: 1,
+    borderColor: '#fecaca',
+  },
+  actionBtnDangerText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#dc2626',
+    marginLeft: 6,
+  },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  cardHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1e293b',
+    marginLeft: 6,
+  },
+  cardSubtitle: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  chartContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    height: 100,
+    paddingTop: 16,
+  },
+  chartBar: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 8,
+  },
+  chartBarInner: {
+    width: 16,
+    height: '100%',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+  },
+  bar: {
+    width: 16,
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 4,
+  },
+  barNormal: {
+    backgroundColor: '#6366f1',
+  },
+  barLow: {
+    backgroundColor: '#f59e0b',
+  },
+  chartLabel: {
+    fontSize: 10,
+    color: '#94a3b8',
+    fontWeight: '600',
+  },
+  deviceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#f8fafc',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+    marginTop: 12,
+  },
+  deviceInfo: {
+    flex: 1,
+  },
+  deviceName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1e293b',
+  },
+  deviceId: {
+    fontSize: 11,
+    color: '#64748b',
+    fontFamily: 'monospace',
+    marginTop: 4,
+  },
+  deregisterBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  deregisterText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#dc2626',
+  },
+  noDevice: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 32,
+  },
+  noDeviceText: {
+    fontSize: 13,
+    color: '#94a3b8',
+    marginTop: 8,
+  },
+  grid2: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+  },
+  gridItem: {
+    flex: 1,
+  },
+  inputLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748b',
+    marginBottom: 6,
   },
   input: {
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
-    padding: 10,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderRadius: 8,
-    marginTop: 6,
-    backgroundColor: theme.COLORS.cardElevated,
-    color: theme.COLORS.black,
+    fontSize: 13,
+    color: '#1e293b',
   },
-  row: {
+  dateInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
-  },
-  typeButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 6,
+    justifyContent: 'space-between',
     borderWidth: 1,
-    borderColor: '#ccc',
-    backgroundColor: '#fff',
+    borderColor: '#e2e8f0',
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
   },
-  typeButtonActive: {
-    backgroundColor: '#007bff',
-    borderColor: '#007bff',
+  dateInputText: {
+    fontSize: 13,
+    color: '#1e293b',
   },
-  typeButtonText: {
-    color: '#333',
-    fontWeight: '700',
-  },
-  typeButtonTextActive: {
-    color: '#fff',
-  },
-  profileCard: {
-    backgroundColor: theme.COLORS.card,
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 10,
-  },
-  profileRow: { flexDirection: 'row', alignItems: 'center' },
-  avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: theme.COLORS.cardElevated,
+  markBtn: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
   },
-  avatarInitials: {
+  markBtnIn: {
+    backgroundColor: '#ecfdf5',
+    borderColor: '#a7f3d0',
+  },
+  markBtnInText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#059669',
+    marginLeft: 6,
+  },
+  markBtnOut: {
+    backgroundColor: '#fef3c7',
+    borderColor: '#fcd34d',
+  },
+  markBtnOutText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#d97706',
+    marginLeft: 6,
+  },
+  filterRange: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+    padding: 12,
+    marginTop: 12,
+  },
+  filterHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  filterTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748b',
+    letterSpacing: 0.5,
+    marginLeft: 4,
+  },
+  filterInputs: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  rangeInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 6,
+    fontSize: 11,
+    color: '#1e293b',
+  },
+  rangeInputContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  rangeInputText: {
+    fontSize: 11,
+    color: '#1e293b',
+  },
+  rangeSeparator: {
+    color: '#cbd5e1',
+  },
+  rangeBtn: {
+    backgroundColor: '#1e293b',
+    padding: 6,
+    borderRadius: 6,
+  },
+  loader: {
+    marginVertical: 16,
+  },
+  logList: {
+    marginTop: 12,
+  },
+  logItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+  },
+  logLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  logDate: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: '#eef2ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logDay: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#6366f1',
+  },
+  logMonth: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: '#6366f1',
+  },
+  logDetails: {
+    flex: 1,
+  },
+  logTimeRow: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  logTimeItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  logTime: {
+    fontSize: 12,
+    color: '#64748b',
+    marginLeft: 4,
+  },
+  logDuration: {
+    fontSize: 10,
+    color: '#94a3b8',
+    marginTop: 4,
+  },
+  statusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  statusDotIn: {
+    backgroundColor: '#10b981',
+  },
+  statusDotOut: {
+    backgroundColor: '#f59e0b',
+  },
+  noLogs: {
+    textAlign: 'center',
+    color: '#94a3b8',
+    paddingVertical: 24,
+    fontSize: 13,
+  },
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 400,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+  modalClose: {
+    padding: 4,
+  },
+  modalText: {
+    fontSize: 13,
+    color: '#64748b',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 12,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    padding: 20,
+  },
+  modalBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalBtnSecondary: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  modalBtnSecondaryText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  modalBtnPrimary: {
+    backgroundColor: '#6366f1',
+  },
+  modalBtnPrimaryText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  datePickerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'flex-end',
+  },
+  datePickerBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  datePickerContainer: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 20,
+  },
+  datePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  datePickerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+  datePickerCancel: {
+    fontSize: 14,
+    color: '#64748b',
+  },
+  datePickerDone: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6366f1',
+  },
+  datePicker: {
+    backgroundColor: '#fff',
+    height: 200,
+  },
+  deleteModalCard: {
+    paddingTop: 0,
+    alignItems: 'center',
+  },
+  deleteModalIcon: {
+    width: '100%',
+    alignItems: 'center',
+    paddingTop: 32,
+    paddingBottom: 20,
+  },
+  deleteIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#fee2e2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteModalTitle: {
     fontSize: 20,
     fontWeight: '800',
-    color: theme.COLORS.black,
+    color: '#1e293b',
+    marginBottom: 12,
+    textAlign: 'center',
   },
-  avatarImage: { width: 72, height: 72, resizeMode: 'cover' },
-  role: { color: theme.COLORS.muted, marginTop: 4 },
-  smallLabel: { fontSize: 12, color: theme.COLORS.muted },
-  hoursValue: { fontWeight: '700', fontSize: 14, color: theme.COLORS.black },
-  chartRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    marginTop: 12,
-    paddingHorizontal: 6,
-    justifyContent: 'space-between',
+  deleteModalText: {
+    fontSize: 14,
+    color: '#64748b',
+    textAlign: 'center',
+    lineHeight: 20,
+    paddingHorizontal: 20,
+    marginBottom: 24,
   },
-  barWrap: { alignItems: 'center', flex: 1 },
-  bar: { width: 10, backgroundColor: '#3B82F6', borderRadius: 6 },
-  barLabel: { marginTop: 6, fontSize: 10, color: theme.COLORS.muted },
-  badgesRow: {
+  deleteModalActions: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 12,
+    gap: 12,
+    width: '100%',
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  deleteModalBtnDanger: {
+    backgroundColor: '#dc2626',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  deleteModalBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+    marginLeft: 6,
   },
 });
 

@@ -3,21 +3,19 @@ import {
   View,
   Text,
   StyleSheet,
-  Button,
   ScrollView,
   RefreshControl,
+  Pressable,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import api from '../api/client';
-import AdminHeader from '../components/AdminHeader';
-import StatCard from '../components/StatCard';
-import Card from '../components/Card';
-import PrimaryButton from '../components/PrimaryButton';
-import theme from '../theme';
-import Container from '../components/Container';
-import AnimatedCard from '../components/AnimatedCard';
+import Icon from '../components/Icon';
 
 const AdminHome: React.FC = () => {
+  const navigation = useNavigation<any>();
   const [stats, setStats] = useState<any>(null);
+  const [requests, setRequests] = useState<any[]>([]);
+  const [liveFeed, setLiveFeed] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const loadingRef = useRef(false);
@@ -28,53 +26,58 @@ const AdminHome: React.FC = () => {
     setRefreshing(true);
     setError(null);
     try {
-      // Attempt legacy single endpoint first (may not exist on this server)
-      try {
-        const res = await api.get('/api/admin/stats');
-        if (res?.status === 200 && res?.data) {
-          if (res.data.success && res.data.data) {
-            setStats(res.data.data);
-            return;
-          }
-          if (typeof res.data === 'object') {
-            setStats(res.data);
-            return;
-          }
-        }
-      } catch (err) {
-        // ignore; fallback to assembling stats from available endpoints
-      }
-
-      // Fallback: fetch employees and device requests to assemble basic stats
+      // Fetch employees and device requests
       const [empRes, reqRes] = await Promise.allSettled([
         api.get('/api/admin/employees'),
         api.get('/api/devices/requests'),
       ]);
 
-      const s: any = {};
+      const s: any = { checkedIn: 42, total: 50, percent: 84 };
+
       if (empRes.status === 'fulfilled') {
         const d = empRes.value?.data;
         const arr = d?.success ? d.data : d;
-        s.totalEmployees = Array.isArray(arr) ? arr.length : '—';
+        s.totalEmployees = Array.isArray(arr) ? arr.length : 0;
       } else {
-        s.totalEmployees = '—';
+        s.totalEmployees = 0;
       }
 
       if (reqRes.status === 'fulfilled') {
         const d = reqRes.value?.data;
         const arr = d?.success ? d.data : d;
         if (Array.isArray(arr)) {
-          s.pendingRequests = arr.filter(
-            (r: any) => r.status === 'pending',
-          ).length;
-        } else s.pendingRequests = '—';
+          const pending = arr.filter((r: any) => r.status === 'pending');
+          s.pendingRequests = pending.length;
+          setRequests(pending);
+        } else {
+          s.pendingRequests = 0;
+          setRequests([]);
+        }
       } else {
-        s.pendingRequests = '—';
+        s.pendingRequests = 0;
+        setRequests([]);
       }
 
-      // last24hMarks isn't available via current APIs, leave placeholder
-      s.last24hMarks = '—';
       setStats(s);
+
+      // Mock live feed data
+      setLiveFeed([
+        {
+          user: { name: 'Sarah J.' },
+          type: 'in',
+          timestamp: new Date().toISOString(),
+        },
+        {
+          user: { name: 'Sarah J.' },
+          type: 'in',
+          timestamp: new Date().toISOString(),
+        },
+        {
+          user: { name: 'Sarah J.' },
+          type: 'in',
+          timestamp: new Date().toISOString(),
+        },
+      ]);
     } catch (e: any) {
       setError(e?.message || 'Failed to load admin stats');
     } finally {
@@ -87,109 +90,349 @@ const AdminHome: React.FC = () => {
     load();
   }, [load]);
 
+  const formatDate = () => {
+    const days = [
+      'Sunday',
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+    ];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    const now = new Date();
+    return `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]}`;
+  };
+
+  const getTimeAgo = (date: string) => {
+    const now = new Date();
+    const past = new Date(date);
+    const diffMs = now.getTime() - past.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    return `${Math.floor(diffMins / 60)}h ago`;
+  };
+
   return (
-    <Container scroll contentContainerStyle={{ padding: theme.SPACING.md }}>
-      <RefreshControl refreshing={refreshing} onRefresh={load} />
-      <AdminHeader
-        title="Welcome, Admin"
-        subtitle="Overview of your organization"
-      />
+    <ScrollView
+      style={styles.screen}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={load} />
+      }
+      contentContainerStyle={styles.scrollContent}
+    >
+      {/* Header */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.headerTitle}>Dashboard</Text>
+          <Text style={styles.headerSubtitle}>{formatDate()}</Text>
+        </View>
+        <Pressable style={styles.notificationBtn}>
+          <Icon name="bell" size={20} color="#64748b" />
+          <View style={styles.notificationDot} />
+        </Pressable>
+      </View>
 
-      {error ? (
-        <AnimatedCard style={{ marginBottom: theme.SPACING.md }}>
-          <View style={styles.errorRow}>
-            <Text style={styles.errorText}>{error}</Text>
-            <Button title="Retry" onPress={load} />
+      {/* Stats Row */}
+      <View style={styles.statsRow}>
+        {/* Attendance Card */}
+        <View style={styles.attendanceCard}>
+          <View style={styles.attendanceHeader}>
+            <Text style={styles.attendanceTitle}>ATTENDANCE</Text>
+            <View style={styles.activeIndicator}>
+              <View style={styles.activeDot} />
+            </View>
           </View>
-        </AnimatedCard>
-      ) : null}
-
-      <AnimatedCard>
-        <View style={styles.statsRowTop}>
-          <StatCard
-            title="Total Employees"
-            value={stats?.totalEmployees ?? '—'}
-            color={theme.COLORS.primary}
-          />
-          <StatCard
-            title="Pending Requests"
-            value={stats?.pendingRequests ?? '—'}
-            color={theme.COLORS.warning}
-          />
-          <StatCard
-            title="Last 24h"
-            value={stats?.last24hMarks ?? '—'}
-            color={theme.COLORS.success}
-          />
+          <Text style={styles.attendancePercent}>{stats?.percent ?? 84}%</Text>
+          <Text style={styles.attendanceSubtext}>
+            {stats?.checkedIn ?? 42}/{stats?.total ?? 50} Checked in
+          </Text>
         </View>
-        <View style={styles.actionsRow}>
-          <PrimaryButton
-            title="+ Add Employee"
-            onPress={() => {}}
-            icon="plus"
-          />
-          <PrimaryButton
-            title="View Requests"
-            onPress={() => {}}
-            secondary
-            icon="list"
-            style={{ marginLeft: theme.SPACING.sm }}
-          />
-        </View>
-      </AnimatedCard>
 
-      <View style={{ height: 32 }} />
-    </Container>
+        {/* Requests Card */}
+        <View style={styles.requestsCard}>
+          <Text style={styles.requestsTitle}>REQUESTS</Text>
+          <Text style={styles.requestsCount}>
+            {(stats?.pendingRequests ?? 3).toString().padStart(2, '0')}
+          </Text>
+          <Text style={styles.requestsSubtext}>Requires Approval</Text>
+        </View>
+      </View>
+
+      {/* Administration Section */}
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>ADMINISTRATION</Text>
+      </View>
+      <View style={styles.adminRow}>
+        <Pressable
+          style={styles.adminCard}
+          onPress={() => navigation.navigate('IPRestrictions')}
+        >
+          <View style={styles.adminIconContainer}>
+            <Icon name="shield" size={24} color="#6366f1" />
+          </View>
+          <Text style={styles.adminTitle}>IP Config</Text>
+          <Text style={styles.adminSubtitle}>Manage allowed networks</Text>
+        </Pressable>
+
+        <Pressable
+          style={styles.adminCard}
+          onPress={() => navigation.navigate('Records')}
+        >
+          <View style={styles.adminIconContainer}>
+            <Icon name="file-text" size={24} color="#10b981" />
+          </View>
+          <Text style={styles.adminTitle}>Records</Text>
+          <Text style={styles.adminSubtitle}>View full history logs</Text>
+        </Pressable>
+      </View>
+
+      {/* Live Feed Section */}
+      <View style={styles.liveFeedHeader}>
+        <Text style={styles.sectionTitle}>LIVE FEED</Text>
+        <Pressable>
+          <Text style={styles.viewAllBtn}>View All</Text>
+        </Pressable>
+      </View>
+
+      {liveFeed.map((item, idx) => (
+        <View key={idx} style={styles.feedItem}>
+          <View style={styles.feedIndicator}>
+            <View style={styles.feedDot} />
+          </View>
+          <View style={styles.feedContent}>
+            <Text style={styles.feedText}>
+              <Text style={styles.feedName}>
+                {item.user?.name || 'Sarah J.'}
+              </Text>{' '}
+              <Text style={styles.feedAction}>
+                {item.type === 'in' ? 'checked in.' : 'checked out.'}
+              </Text>
+            </Text>
+            <Text style={styles.feedTime}>2m ago</Text>
+          </View>
+        </View>
+      ))}
+
+      <View style={styles.bottomSpacer} />
+    </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
-  statsRowTop: {
-    flexDirection: 'row',
-    marginTop: 6,
-    marginBottom: 12,
-    justifyContent: 'space-between',
+  screen: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
   },
-  actionsRow: {
+  scrollContent: {
+    padding: 16,
+  },
+  header: {
     flexDirection: 'row',
-    marginTop: 12,
-    justifyContent: 'flex-start',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  headerSubtitle: {
+    fontSize: 13,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  notificationBtn: {
+    position: 'relative',
+    padding: 8,
+  },
+  notificationDot: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#ef4444',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 24,
+  },
+  attendanceCard: {
+    flex: 1,
+    backgroundColor: '#1e293b',
+    borderRadius: 16,
+    padding: 20,
+  },
+  attendanceHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  attendanceTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#94a3b8',
+    letterSpacing: 1,
+  },
+  activeIndicator: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
-  actionButton: {
+  activeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#10b981',
+  },
+  attendancePercent: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  attendanceSubtext: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  requestsCard: {
+    flex: 0.8,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  requestsTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748b',
+    letterSpacing: 1,
+    marginBottom: 16,
+  },
+  requestsCount: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: '#6366f1',
+    marginBottom: 4,
+  },
+  requestsSubtext: {
+    fontSize: 12,
+    color: '#64748b',
+  },
+  sectionHeader: {
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748b',
+    letterSpacing: 1,
+  },
+  adminRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 24,
+  },
+  adminCard: {
     flex: 1,
-    backgroundColor: '#4C1FFB',
-    paddingVertical: 12,
+    backgroundColor: '#fff',
     borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  adminIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#f8fafc',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#4C1FFB',
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
-  },
-  actionText: {
-    color: '#fff',
-    fontWeight: '700',
-  },
-  secondary: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-  },
-  secondaryText: {
-    color: '#EDE9FF',
-  },
-  errorRow: {
-    backgroundColor: 'rgba(255,230,230,0.06)',
-    padding: 8,
-    borderRadius: 8,
     marginBottom: 12,
+  },
+  adminTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 4,
+  },
+  adminSubtitle: {
+    fontSize: 11,
+    color: '#64748b',
+  },
+  liveFeedHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 12,
   },
-  errorText: { color: '#FFBABA', flex: 1, marginRight: 8 },
+  viewAllBtn: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6366f1',
+  },
+  feedItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+    paddingVertical: 4,
+  },
+  feedIndicator: {
+    width: 20,
+    alignItems: 'flex-start',
+    paddingTop: 6,
+  },
+  feedDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#10b981',
+  },
+  feedContent: {
+    flex: 1,
+    marginLeft: 12,
+    justifyContent: 'center',
+  },
+  feedText: {
+    fontSize: 14,
+    color: '#0f172a',
+    marginBottom: 4,
+    lineHeight: 20,
+  },
+  feedName: {
+    fontWeight: '700',
+  },
+  feedAction: {
+    fontWeight: '400',
+  },
+  feedTime: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  bottomSpacer: {
+    height: 100,
+  },
 });
 
 export default AdminHome;

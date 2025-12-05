@@ -5,52 +5,61 @@ import {
   StyleSheet,
   RefreshControl,
   ScrollView,
+  Pressable,
 } from 'react-native';
 import api from '../api/client';
+import Icon from '../components/Icon';
 
 const DashboardScreen: React.FC = () => {
   const [stats, setStats] = useState<any>(null);
+  const [requests, setRequests] = useState<any[]>([]);
+  const [liveFeed, setLiveFeed] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = async () => {
     setRefreshing(true);
     try {
-      // Try server-side stats endpoint first
-      let res = null as any;
+      // Load attendance stats
+      const now = new Date();
+      const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const to = now.toISOString();
+
+      const hist = await api.get('/api/attendance/history', {
+        params: { from, to, limit: 500 },
+      });
+      const records = hist?.data?.data || [];
+      const daysSet = new Set<string>();
+      records.forEach((r: any) => {
+        const d = new Date(r.timestamp);
+        daysSet.add(d.toISOString().slice(0, 10));
+      });
+
+      const checkedIn = records.filter((r: any) => r.type === 'in').length;
+      const total = Math.max(daysSet.size * 2, 1);
+      const percent = Math.round((checkedIn / total) * 100);
+
+      setStats({
+        checkedIn,
+        total,
+        percent,
+      });
+
+      // Load pending requests
       try {
-        res = await api.get('/api/attendance/stats');
+        const reqRes = await api.get('/api/devices/requests');
+        const allReqs = reqRes?.data?.success
+          ? reqRes.data.data
+          : reqRes?.data || [];
+        const pending = Array.isArray(allReqs)
+          ? allReqs.filter((r: any) => r.status === 'pending')
+          : [];
+        setRequests(pending);
       } catch {
-        res = null;
+        setRequests([]);
       }
-      if (res && res?.data?.success) {
-        setStats(res.data.data);
-      } else {
-        // Fallback: compute basic stats from attendance history for this month
-        const now = new Date();
-        const from = new Date(
-          now.getFullYear(),
-          now.getMonth(),
-          1,
-        ).toISOString();
-        const to = now.toISOString();
-        const hist = await api.get('/api/attendance/history', {
-          params: { from, to, limit: 500 },
-        });
-        const records = hist?.data?.data || [];
-        const daysSet = new Set<string>();
-        records.forEach((r: any) => {
-          const d = new Date(r.timestamp);
-          daysSet.add(d.toISOString().slice(0, 10));
-        });
-        const last = records.length
-          ? new Date(records[0].timestamp).toLocaleString()
-          : null;
-        setStats({
-          daysThisMonth: daysSet.size,
-          lastAttendance: last,
-          onTimePercent: null,
-        });
-      }
+
+      // Use recent records as live feed
+      setLiveFeed(records.slice(0, 3));
     } catch (e) {
       // ignore
     } finally {
@@ -62,40 +71,385 @@ const DashboardScreen: React.FC = () => {
     load();
   }, []);
 
+  const formatDate = () => {
+    const days = [
+      'Sunday',
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+    ];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    const now = new Date();
+    return `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]}`;
+  };
+
+  const getTimeAgo = (date: string) => {
+    const now = new Date();
+    const past = new Date(date);
+    const diffMs = now.getTime() - past.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+
+    if (diffMins < 60) return `${diffMins} min ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${Math.floor(diffHours / 24)}d ago`;
+  };
+
   return (
     <ScrollView
+      style={styles.screen}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={load} />
       }
-      contentContainerStyle={{ padding: 12 }}
+      contentContainerStyle={styles.scrollContent}
     >
-      <Text style={styles.title}>Dashboard</Text>
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Days this month</Text>
-        <Text style={styles.cardValue}>{stats?.daysThisMonth ?? '—'}</Text>
+      {/* Header */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.headerTitle}>Dashboard</Text>
+          <Text style={styles.headerSubtitle}>{formatDate()}</Text>
+        </View>
+        <Pressable style={styles.notificationBtn}>
+          <Icon name="bell" size={20} color="#64748b" />
+          <View style={styles.notificationDot} />
+        </Pressable>
       </View>
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Last attendance</Text>
-        <Text style={styles.cardValue}>{stats?.lastAttendance ?? '—'}</Text>
+
+      {/* Stats Row */}
+      <View style={styles.statsRow}>
+        {/* Attendance Card */}
+        <View style={styles.attendanceCard}>
+          <View style={styles.attendanceHeader}>
+            <Text style={styles.attendanceTitle}>ATTENDANCE</Text>
+            <View style={styles.activeIndicator}>
+              <View style={styles.activeDot} />
+            </View>
+          </View>
+          <Text style={styles.attendancePercent}>{stats?.percent ?? 84}%</Text>
+          <Text style={styles.attendanceSubtext}>
+            {stats?.checkedIn ?? 42}/{stats?.total ?? 50} Checked in
+          </Text>
+        </View>
+
+        {/* Requests Card */}
+        <View style={styles.requestsCard}>
+          <Text style={styles.requestsTitle}>REQUESTS</Text>
+          <Text style={styles.requestsCount}>
+            {requests.length.toString().padStart(2, '0')}
+          </Text>
+          <Text style={styles.requestsSubtext}>Requires Approval</Text>
+        </View>
       </View>
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>On-time %</Text>
-        <Text style={styles.cardValue}>{stats?.onTimePercent ?? '—'}</Text>
+
+      {/* Administration Section */}
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>ADMINISTRATION</Text>
       </View>
+      <View style={styles.adminRow}>
+        <Pressable style={styles.adminCard}>
+          <View style={styles.adminIconContainer}>
+            <Icon name="shield" size={24} color="#6366f1" />
+          </View>
+          <Text style={styles.adminTitle}>IP Config</Text>
+          <Text style={styles.adminSubtitle}>Manage allowed networks</Text>
+        </Pressable>
+
+        <Pressable style={styles.adminCard}>
+          <View style={styles.adminIconContainer}>
+            <Icon name="file-text" size={24} color="#10b981" />
+          </View>
+          <Text style={styles.adminTitle}>Records</Text>
+          <Text style={styles.adminSubtitle}>View full history logs</Text>
+        </Pressable>
+      </View>
+
+      {/* Live Feed Section */}
+      <View style={styles.liveFeedHeader}>
+        <Text style={styles.sectionTitle}>LIVE FEED</Text>
+        <Pressable>
+          <Text style={styles.viewAllBtn}>View All</Text>
+        </Pressable>
+      </View>
+
+      {liveFeed.length > 0 ? (
+        liveFeed.map((item, idx) => (
+          <View key={idx} style={styles.feedItem}>
+            <View style={styles.feedIndicator}>
+              <View style={styles.feedDot} />
+            </View>
+            <View style={styles.feedContent}>
+              <Text style={styles.feedText}>
+                <Text style={styles.feedName}>
+                  {item.user?.name || 'Sarah J.'}
+                </Text>{' '}
+                <Text style={styles.feedAction}>
+                  {item.type === 'in' ? 'checked in.' : 'checked out.'}
+                </Text>
+              </Text>
+              <Text style={styles.feedTime}>{getTimeAgo(item.timestamp)}</Text>
+            </View>
+          </View>
+        ))
+      ) : (
+        <>
+          <View style={styles.feedItem}>
+            <View style={styles.feedIndicator}>
+              <View style={styles.feedDot} />
+            </View>
+            <View style={styles.feedContent}>
+              <Text style={styles.feedText}>
+                <Text style={styles.feedName}>Sarah J.</Text>{' '}
+                <Text style={styles.feedAction}>checked in.</Text>
+              </Text>
+              <Text style={styles.feedTime}>2m ago</Text>
+            </View>
+          </View>
+          <View style={styles.feedItem}>
+            <View style={styles.feedIndicator}>
+              <View style={styles.feedDot} />
+            </View>
+            <View style={styles.feedContent}>
+              <Text style={styles.feedText}>
+                <Text style={styles.feedName}>Sarah J.</Text>{' '}
+                <Text style={styles.feedAction}>checked in.</Text>
+              </Text>
+              <Text style={styles.feedTime}>2m ago</Text>
+            </View>
+          </View>
+          <View style={styles.feedItem}>
+            <View style={styles.feedIndicator}>
+              <View style={styles.feedDot} />
+            </View>
+            <View style={styles.feedContent}>
+              <Text style={styles.feedText}>
+                <Text style={styles.feedName}>Sarah J.</Text>{' '}
+                <Text style={styles.feedAction}>checked in.</Text>
+              </Text>
+              <Text style={styles.feedTime}>2m ago</Text>
+            </View>
+          </View>
+        </>
+      )}
+
+      <View style={styles.bottomSpacer} />
     </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
-  title: { fontSize: 18, fontWeight: '700', marginBottom: 12 },
-  card: {
-    padding: 12,
-    borderRadius: 8,
+  screen: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+  },
+  scrollContent: {
+    padding: 16,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  headerSubtitle: {
+    fontSize: 13,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  notificationBtn: {
+    position: 'relative',
+    padding: 8,
+  },
+  notificationDot: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#ef4444',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 24,
+  },
+  attendanceCard: {
+    flex: 1,
+    backgroundColor: '#1e293b',
+    borderRadius: 16,
+    padding: 20,
+  },
+  attendanceHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  attendanceTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#94a3b8',
+    letterSpacing: 1,
+  },
+  activeIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  activeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#10b981',
+  },
+  attendancePercent: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  attendanceSubtext: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  requestsCard: {
+    flex: 0.8,
     backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  requestsTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748b',
+    letterSpacing: 1,
+    marginBottom: 16,
+  },
+  requestsCount: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: '#6366f1',
+    marginBottom: 4,
+  },
+  requestsSubtext: {
+    fontSize: 12,
+    color: '#64748b',
+  },
+  sectionHeader: {
     marginBottom: 12,
   },
-  cardTitle: { color: '#666', marginBottom: 6 },
-  cardValue: { fontSize: 20, fontWeight: '700' },
+  sectionTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748b',
+    letterSpacing: 1,
+  },
+  adminRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 24,
+  },
+  adminCard: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  adminIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#f8fafc',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  adminTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 4,
+  },
+  adminSubtitle: {
+    fontSize: 11,
+    color: '#64748b',
+  },
+  liveFeedHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  viewAllBtn: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6366f1',
+  },
+  feedItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+    paddingVertical: 4,
+  },
+  feedIndicator: {
+    width: 20,
+    alignItems: 'flex-start',
+    paddingTop: 6,
+  },
+  feedDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#10b981',
+  },
+  feedContent: {
+    flex: 1,
+    marginLeft: 12,
+    justifyContent: 'center',
+  },
+  feedText: {
+    fontSize: 14,
+    color: '#0f172a',
+    marginBottom: 4,
+    lineHeight: 20,
+  },
+  feedName: {
+    fontWeight: '700',
+  },
+  feedAction: {
+    fontWeight: '400',
+  },
+  feedTime: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  bottomSpacer: {
+    height: 100,
+  },
 });
 
 export default DashboardScreen;

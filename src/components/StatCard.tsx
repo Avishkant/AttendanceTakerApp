@@ -65,6 +65,8 @@ const StatCard: React.FC<Props> = ({
 
 const styles = StyleSheet.create({
   card: {
+    // Make the card share available row space so multiple cards
+    // sit in a single row. Use `flex: 1` so cards size evenly.
     flex: 1,
     backgroundColor: theme.COLORS.card,
     borderRadius: theme.RADIUS.md,
@@ -72,7 +74,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 6,
     alignItems: 'flex-start',
     justifyContent: 'center',
-    minWidth: 100,
+    // allow natural shrinking via flex; avoid fixed min/max widths
     ...theme.SHADOW,
     borderWidth: 1,
     borderColor: 'transparent',

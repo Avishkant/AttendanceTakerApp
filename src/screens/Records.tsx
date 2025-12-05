@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,626 +6,501 @@ import {
   StyleSheet,
   ActivityIndicator,
   TextInput,
-  TouchableOpacity,
+  Pressable,
+  RefreshControl,
 } from 'react-native';
-import DatePicker from 'react-native-date-picker';
+import { useNavigation } from '@react-navigation/native';
 import Icon from '../components/Icon';
 import api from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
-import theme from '../theme';
 
-type RecordItem = {
+type AttendanceRecord = {
   _id: string;
   type: 'in' | 'out';
   timestamp: string;
   ip?: string;
-  user?: { id: string; name?: string } | null;
-};
-
-type DayRecord = {
-  dateKey: string; // yyyy-mm-dd
-  dateLabel: string; // Tue, Apr 1, 2025
-  firstIn?: RecordItem | null;
-  lastOut?: RecordItem | null;
-  all?: RecordItem[];
-  employeeId?: string | null;
-  employeeName?: string | null;
+  user: {
+    _id: string;
+    name?: string;
+    email?: string;
+  };
 };
 
 const Records: React.FC = () => {
+  const navigation = useNavigation();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [records, setRecords] = useState<RecordItem[]>([]);
-  const [meta, setMeta] = useState<any>(null);
-  const [viewMode, setViewMode] = useState<'all' | 'employee'>('all');
+  const [refreshing, setRefreshing] = useState(false);
+  const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [filteredRecords, setFilteredRecords] = useState<AttendanceRecord[]>(
+    [],
+  );
   const [search, setSearch] = useState('');
   const [employees, setEmployees] = useState<any[]>([]);
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(
-    null,
-  );
-  const [loadingEmployees, setLoadingEmployees] = useState(false);
-  const [loadedAll, setLoadedAll] = useState(false);
 
-  // Filters: month or explicit date range
-  const [monthDate, setMonthDate] = useState(() => new Date());
-  const [startDate, setStartDate] = useState<string>(''); // yyyy-mm-dd
-  const [endDate, setEndDate] = useState<string>('');
-  const [startDateObj, setStartDateObj] = useState<Date | null>(null);
-  const [endDateObj, setEndDateObj] = useState<Date | null>(null);
-  const [showStartPicker, setShowStartPicker] = useState(false);
-  const [showEndPicker, setShowEndPicker] = useState(false);
-
-  // handlers for pickers
-  const onConfirmStart = (d: Date) => {
-    const s = d.toISOString().slice(0, 10);
-    setStartDate(s);
-    setStartDateObj(d);
-    setShowStartPicker(false);
-  };
-  const onConfirmEnd = (d: Date) => {
-    const s = d.toISOString().slice(0, 10);
-    setEndDate(s);
-    setEndDateObj(d);
-    setShowEndPicker(false);
-  };
-
-  const load = async () => {
-    setLoading(true);
+  const loadRecords = async () => {
     try {
       if (user?.role === 'admin') {
-        // For admin: fetch list of employees only (lazy load their attendance)
-        setLoadingEmployees(true);
+        // Load all employees
         const empRes = await api.get('/api/admin/employees');
         const empList = empRes?.data?.success ? empRes.data.data : [];
         setEmployees(empList || []);
-        setMeta({ employees: empList.length });
-        setLoadingEmployees(false);
-        // do not fetch all attendances by default to avoid heavy requests
-        // Admin can either pick an employee or press 'Load All' to explicitly load everything
-      } else {
-        const res = await api.get('/api/attendance/history', {
-          params: { limit: 200 },
+
+        // Load attendance for all employees
+        const requests = empList.map((emp: any) =>
+          api
+            .get(`/api/admin/employees/${emp._id}/attendance`, {
+              params: { limit: 100 },
+            })
+            .then((res: any) => ({
+              user: emp,
+              data: res?.data?.data || [],
+            }))
+            .catch(() => ({ user: emp, data: [] })),
+        );
+
+        const results = await Promise.all(requests);
+        const allRecords: AttendanceRecord[] = [];
+
+        results.forEach((result: any) => {
+          (result.data || []).forEach((record: any) => {
+            allRecords.push({
+              ...record,
+              user: {
+                _id: result.user._id,
+                name: result.user.name,
+                email: result.user.email,
+              },
+            });
+          });
         });
-        if (res && res.data && res.data.success) {
-          setRecords(res.data.data || []);
+
+        // Sort by timestamp descending (newest first)
+        allRecords.sort(
+          (a, b) =>
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+        );
+
+        setRecords(allRecords);
+        setFilteredRecords(allRecords);
+      } else {
+        // Employee view - show their own records
+        const res = await api.get('/api/attendance/history', {
+          params: { limit: 100 },
+        });
+        if (res?.data?.success) {
+          const data = res.data.data || [];
+          setRecords(data);
+          setFilteredRecords(data);
         }
       }
     } catch (err) {
-      // ignore for now; user will see empty list
+      console.error('Failed to load records:', err);
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Fetch attendance for a single employee (lazy)
-  const fetchEmployeeAttendance = async (employeeId: string) => {
-    setLoading(true);
-    try {
-      const res = await api.get(
-        `/api/admin/employees/${employeeId}/attendance`,
-        { params: { limit: 500 } },
-      );
-      const emp = employees.find(e => e._id === employeeId) || null;
-      const data = res?.data?.data || [];
-      // Tag records with user info so grouping/search works
-      const tagged: RecordItem[] = data.map((r: any) => ({
-        ...r,
-        user: { id: employeeId, name: emp?.name || null },
-      }));
-      setRecords(tagged);
-    } catch (e) {
-      setRecords([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Explicitly load all employees' attendances (user-triggered)
-  const fetchAllAttendance = async () => {
-    setLoading(true);
-    try {
-      const requests = employees.map((e: any) =>
-        api
-          .get(`/api/admin/employees/${e._id}/attendance`, {
-            params: { limit: 200 },
-          })
-          .then((r: any) => ({ user: e, data: r?.data?.data || [] }))
-          .catch(() => ({ user: e, data: [] })),
-      );
-      const results = await Promise.all(requests);
-      const all: RecordItem[] = [];
-      results.forEach((r: any) => {
-        (r.data || []).forEach((rec: any) => {
-          all.push({ ...rec, user: { id: r.user._id, name: r.user.name } });
-        });
-      });
-      all.sort((a, b) => (a.timestamp > b.timestamp ? -1 : 1));
-      setRecords(all);
-      setLoadedAll(true);
-    } catch (e) {
-      // ignore
-    } finally {
-      setLoading(false);
+      setRefreshing(false);
     }
   };
 
   useEffect(() => {
-    load();
+    loadRecords();
   }, []);
 
-  // If admin, default to per-employee view so we avoid loading everything automatically
-  useEffect(() => {
-    if (user?.role === 'admin') setViewMode('employee');
-  }, [user]);
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadRecords();
+  };
 
-  // When employees list is available and in employee mode, auto-select first employee
+  // Filter records based on search
   useEffect(() => {
-    if (
-      viewMode === 'employee' &&
-      employees.length > 0 &&
-      !selectedEmployeeId
-    ) {
-      const first = employees[0];
-      setSelectedEmployeeId(first._id);
-      fetchEmployeeAttendance(first._id);
-    }
-  }, [viewMode, employees]);
-  // Grouping logic: supports 'all' (combined) and 'employee' (per-employee) modes.
-  const grouped = useMemo(() => {
-    const inRange = (dateKey: string) => {
-      // If both start and end provided, filter by range
-      if (startDate && endDate) {
-        return dateKey >= startDate && dateKey <= endDate;
-      }
-      // If only start provided
-      if (startDate && !endDate) {
-        return dateKey >= startDate;
-      }
-      // If only end provided
-      if (!startDate && endDate) {
-        return dateKey <= endDate;
-      }
-      // No explicit range: show all dates by default
-      return true;
-    };
-
-    if (viewMode === 'employee') {
-      // group by employeeId + date
-      const map: Record<string, DayRecord> = {};
-      records.forEach(r => {
-        const d = new Date(r.timestamp);
-        const dateKey = d.toISOString().slice(0, 10);
-        const empId = r.user?.id || 'unknown';
-        const key = `${empId}__${dateKey}`;
-        if (!map[key]) {
-          map[key] = {
-            dateKey: key,
-            dateLabel: new Date(dateKey).toLocaleDateString(undefined, {
-              weekday: 'short',
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric',
-            }),
-            firstIn: null,
-            lastOut: null,
-            all: [],
-            employeeId: empId,
-            employeeName: r.user?.name || null,
-          };
-        }
-        map[key].all = map[key].all || [];
-        map[key].all.push(r);
-      });
-      const days = Object.values(map).map(dr => {
-        const items = (dr.all || []).sort((a, b) =>
-          a.timestamp > b.timestamp ? 1 : -1,
-        );
-        const firstIn = items.find(i => i.type === 'in') || null;
-        const lastOut =
-          [...items].reverse().find(i => i.type === 'out') || null;
-        return { ...dr, firstIn, lastOut } as DayRecord;
-      });
-      // apply filters: search on employee name and date range/month
-      const filtered = days.filter(d => {
-        const datePart = d.dateKey.split('__').pop() || '';
-        const matchesDate = inRange(datePart);
-        const matchesSearch = search
-          ? (d.employeeName || '').toLowerCase().includes(search.toLowerCase())
-          : true;
-        return matchesDate && matchesSearch;
-      });
-      // sort by date desc
-      filtered.sort((a, b) => (a.dateKey > b.dateKey ? -1 : 1));
-      return filtered;
+    if (!search.trim()) {
+      setFilteredRecords(records);
+      return;
     }
 
-    // Default: group all records by date (combined employees)
-    const map: Record<string, RecordItem[]> = {};
-    records.forEach(r => {
-      const d = new Date(r.timestamp);
-      const key = d.toISOString().slice(0, 10);
-      if (!map[key]) map[key] = [];
-      map[key].push(r);
-    });
-    const days: DayRecord[] = Object.keys(map)
-      .sort((a, b) => (a > b ? -1 : 1))
-      .map(k => {
-        const items = (map[k] || []).sort((a, b) =>
-          a.timestamp > b.timestamp ? 1 : -1,
-        );
-        const firstIn = items.find(i => i.type === 'in') || null;
-        const lastOut =
-          [...items].reverse().find(i => i.type === 'out') || null;
-        const dateLabel = new Date(k).toLocaleDateString(undefined, {
-          weekday: 'short',
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        });
-        return { dateKey: k, dateLabel, firstIn, lastOut, all: items };
-      });
-    // apply date filtering and search (search matches any user name in the day's records)
-    const filtered = days.filter(d => {
-      if (!inRange(d.dateKey)) return false;
-      if (!search) return true;
-      return (d.all || []).some(r =>
-        (r.user?.name || '').toLowerCase().includes(search.toLowerCase()),
+    const searchLower = search.toLowerCase();
+    const filtered = records.filter(record => {
+      const userName = record.user?.name?.toLowerCase() || '';
+      const userEmail = record.user?.email?.toLowerCase() || '';
+      const type = record.type.toLowerCase();
+      const ip = record.ip?.toLowerCase() || '';
+
+      return (
+        userName.includes(searchLower) ||
+        userEmail.includes(searchLower) ||
+        type.includes(searchLower) ||
+        ip.includes(searchLower)
       );
     });
-    return filtered;
-  }, [records, viewMode, search, startDate, endDate]);
 
-  const renderDay = ({ item }: { item: DayRecord }) => {
-    const inTime = item.firstIn ? new Date(item.firstIn.timestamp) : null;
-    const outTime = item.lastOut ? new Date(item.lastOut.timestamp) : null;
-    const workingMs =
-      inTime && outTime ? outTime.getTime() - inTime.getTime() : null;
+    setFilteredRecords(filtered);
+  }, [search, records]);
 
-    const formatTime = (d?: Date | null) =>
-      d
-        ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        : '--:--';
+  const formatDateTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    const day = date.getDate();
+    const month = months[date.getMonth()];
+    const year = date.getFullYear();
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+
+    return {
+      date: `${month} ${day}, ${year}`,
+      time: `${hours}:${minutes}`,
+    };
+  };
+
+  const renderRecord = ({ item }: { item: AttendanceRecord }) => {
+    const { date, time } = formatDateTime(item.timestamp);
+    const isCheckIn = item.type === 'in';
 
     return (
-      <View style={styles.card}>
-        <View style={styles.cardRow}>
-          <View style={styles.accent} />
-          <View style={styles.cardContent}>
-            <View style={styles.rowTop}>
-              <View>
-                <Text style={styles.dateLabel}>{item.dateLabel}</Text>
-                {item.employeeName ? (
-                  <Text style={styles.employeeName}>{item.employeeName}</Text>
-                ) : null}
-              </View>
+      <View style={styles.recordCard}>
+        <View style={styles.recordHeader}>
+          <View style={styles.userInfo}>
+            <View
+              style={[
+                styles.typeIndicator,
+                isCheckIn ? styles.checkInIndicator : styles.checkOutIndicator,
+              ]}
+            >
+              <Icon
+                name={isCheckIn ? 'log-in' : 'log-out'}
+                size={16}
+                color="#fff"
+              />
             </View>
-
-            <View style={styles.timesRow}>
-              <View style={styles.timeCol}>
-                <Text style={styles.timeLabel}>Check In</Text>
-                <Text
-                  style={[
-                    styles.timeValue,
-                    inTime ? styles.timeOk : styles.timeMissing,
-                  ]}
-                >
-                  {formatTime(inTime)}
-                </Text>
-              </View>
-              <View style={styles.timeCol}>
-                <Text style={styles.timeLabel}>Check Out</Text>
-                <Text
-                  style={[
-                    styles.timeValue,
-                    outTime ? styles.timeOk : styles.timeMissing,
-                  ]}
-                >
-                  {formatTime(outTime)}
-                </Text>
-              </View>
-              <View style={styles.durationCol}>
-                <Text style={styles.timeLabel}>Working Hrs</Text>
-                <Text
-                  style={[
-                    styles.durationValue,
-                    workingMs ? styles.timeOk : styles.timeMissing,
-                  ]}
-                >
-                  {workingMs
-                    ? `${Math.floor(workingMs / 3600000)
-                        .toString()
-                        .padStart(2, '0')}:${Math.floor(
-                        (workingMs % 3600000) / 60000,
-                      )
-                        .toString()
-                        .padStart(2, '0')}`
-                    : '--:--'}
-                </Text>
-              </View>
+            <View style={styles.userDetails}>
+              <Text style={styles.userName}>
+                {item.user?.name || 'Unknown User'}
+              </Text>
+              {item.user?.email && (
+                <Text style={styles.userEmail}>{item.user.email}</Text>
+              )}
             </View>
           </View>
+          <View
+            style={[
+              styles.typeBadge,
+              isCheckIn ? styles.checkInBadge : styles.checkOutBadge,
+            ]}
+          >
+            <Text
+              style={[
+                styles.typeBadgeText,
+                isCheckIn ? styles.checkInBadgeText : styles.checkOutBadgeText,
+              ]}
+            >
+              {isCheckIn ? 'Check In' : 'Check Out'}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.recordMeta}>
+          <View style={styles.metaItem}>
+            <Icon name="calendar" size={14} color="#64748b" />
+            <Text style={styles.metaText}>{date}</Text>
+          </View>
+          <View style={styles.metaItem}>
+            <Icon name="clock" size={14} color="#64748b" />
+            <Text style={styles.metaText}>{time}</Text>
+          </View>
+          {item.ip && (
+            <View style={styles.metaItem}>
+              <Icon name="globe" size={14} color="#64748b" />
+              <Text style={styles.metaText}>{item.ip}</Text>
+            </View>
+          )}
         </View>
       </View>
     );
   };
 
+  if (loading) {
+    return (
+      <View style={styles.screen}>
+        <View style={styles.header}>
+          <Pressable style={styles.backBtn} onPress={() => navigation.goBack()}>
+            <Icon name="arrow-left" size={24} color="#fff" />
+          </Pressable>
+          <Text style={styles.headerTitle}>Attendance Records</Text>
+          <View style={styles.backBtn} />
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#6366f1" />
+        </View>
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Attendance Details</Text>
+    <View style={styles.screen}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Pressable style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Icon name="arrow-left" size={24} color="#fff" />
+        </Pressable>
+        <Text style={styles.headerTitle}>Attendance Records</Text>
+        <Pressable style={styles.backBtn}>
+          <Icon name="download" size={20} color="#fff" />
+        </Pressable>
+      </View>
 
-      <View style={styles.filterRow}>
-        {/* Show mode toggles only for admins */}
-        {user?.role === 'admin' ? (
-          <View style={styles.filterButtonsRow}>
-            <TouchableOpacity
-              style={[
-                styles.filterButton,
-                viewMode === 'all' && styles.filterButtonActive,
-              ]}
-              onPress={() => setViewMode('all')}
-            >
-              <Text style={styles.filterText}>All</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.filterButton,
-                viewMode === 'employee' && styles.filterButtonActive,
-              ]}
-              onPress={() => setViewMode('employee')}
-            >
-              <Text style={styles.filterText}>Per Employee</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
-
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <Icon name="search" size={18} color="#94a3b8" />
         <TextInput
+          style={styles.searchInput}
+          placeholder="Search by name, email, or IP..."
+          placeholderTextColor="#94a3b8"
           value={search}
           onChangeText={setSearch}
-          placeholder={
-            user?.role === 'admin' && viewMode === 'employee'
-              ? 'Search employee...'
-              : 'Search name/date...'
-          }
-          style={styles.searchInput}
         />
       </View>
-      {/* Month controls and date-range inputs */}
-      <View style={styles.monthRow}>
-        <TouchableOpacity
-          style={styles.monthBtn}
-          onPress={() =>
-            setMonthDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))
-          }
-        >
-          <Text style={styles.filterText}>{'‹'}</Text>
-        </TouchableOpacity>
-        <Text style={styles.monthLabel}>
-          {monthDate.toLocaleDateString(undefined, {
-            month: 'long',
-            year: 'numeric',
-          })}
-        </Text>
-        <TouchableOpacity
-          style={styles.monthBtn}
-          onPress={() =>
-            setMonthDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))
-          }
-        >
-          <Text style={styles.filterText}>{'›'}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.dateButton}
-          onPress={() => setShowStartPicker(true)}
-        >
-          <View style={styles.dateInner}>
-            <Icon name="calendar" size={14} color={theme.COLORS.primary} />
-            <Text style={[styles.dateText, styles.dateTextLeft]}>
-              {startDate || 'Start (YYYY-MM-DD)'}
-            </Text>
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.dateButton}
-          onPress={() => setShowEndPicker(true)}
-        >
-          <View style={styles.dateInner}>
-            <Icon name="calendar" size={14} color={theme.COLORS.primary} />
-            <Text style={[styles.dateText, styles.dateTextLeft]}>
-              {endDate || 'End (YYYY-MM-DD)'}
-            </Text>
-          </View>
-        </TouchableOpacity>
-      </View>
 
-      {viewMode === 'employee' ? (
-        <View style={styles.employeeSelector}>
-          {loadingEmployees ? (
-            <ActivityIndicator />
-          ) : (
-            <FlatList
-              data={employees}
-              horizontal
-              keyExtractor={e => e._id}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[
-                    styles.employeeItem,
-                    selectedEmployeeId === item._id &&
-                      styles.employeeItemActive,
-                  ]}
-                  onPress={() => {
-                    setSelectedEmployeeId(item._id);
-                    fetchEmployeeAttendance(item._id);
-                  }}
-                >
-                  <Text style={styles.filterText}>{item.name}</Text>
-                </TouchableOpacity>
-              )}
-            />
-          )}
-          <TouchableOpacity
-            style={styles.loadAllButton}
-            onPress={fetchAllAttendance}
-          >
-            <Text style={styles.filterText}>Load All</Text>
-          </TouchableOpacity>
+      {/* Stats */}
+      <View style={styles.statsContainer}>
+        <View style={styles.statItem}>
+          <Text style={styles.statValue}>{filteredRecords.length}</Text>
+          <Text style={styles.statLabel}>Total Records</Text>
         </View>
-      ) : null}
-      {loading ? (
-        <ActivityIndicator />
-      ) : (
-        <FlatList
-          data={grouped}
-          keyExtractor={i =>
-            i.employeeId ? `${i.employeeId}-${i.dateKey}` : i.dateKey
-          }
-          renderItem={renderDay}
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>No records found</Text>
-          }
-        />
-      )}
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
+          <Text style={styles.statValue}>
+            {filteredRecords.filter(r => r.type === 'in').length}
+          </Text>
+          <Text style={styles.statLabel}>Check Ins</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
+          <Text style={styles.statValue}>
+            {filteredRecords.filter(r => r.type === 'out').length}
+          </Text>
+          <Text style={styles.statLabel}>Check Outs</Text>
+        </View>
+      </View>
 
-      {/* Date pickers (modal) */}
-      <DatePicker
-        modal
-        mode="date"
-        open={showStartPicker}
-        date={startDateObj || new Date()}
-        onConfirm={date => onConfirmStart(date)}
-        onCancel={() => setShowStartPicker(false)}
-      />
-      <DatePicker
-        modal
-        mode="date"
-        open={showEndPicker}
-        date={endDateObj || new Date()}
-        onConfirm={date => onConfirmEnd(date)}
-        onCancel={() => setShowEndPicker(false)}
+      {/* Records List */}
+      <FlatList
+        data={filteredRecords}
+        renderItem={renderRecord}
+        keyExtractor={item => item._id}
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#6366f1"
+          />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Icon name="inbox" size={48} color="#cbd5e1" />
+            <Text style={styles.emptyText}>No records found</Text>
+            <Text style={styles.emptySubtext}>
+              {search
+                ? 'Try adjusting your search'
+                : 'Attendance records will appear here'}
+            </Text>
+          </View>
+        }
       />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: theme.SPACING.sm },
-  title: { fontSize: 18, fontWeight: '600', marginBottom: theme.SPACING.xs },
-
-  card: {
-    backgroundColor: theme.COLORS.card,
-    borderRadius: theme.RADIUS.sm,
-    marginBottom: theme.SPACING.sm,
-    ...theme.SHADOW,
-    overflow: 'hidden',
+  screen: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
   },
-  cardRow: { flexDirection: 'row', alignItems: 'stretch' },
-  accent: { width: 6, backgroundColor: theme.COLORS.primary },
-  cardContent: { flex: 1, padding: theme.SPACING.sm },
-
-  rowTop: {
+  header: {
+    backgroundColor: '#1e293b',
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 48,
+    paddingBottom: 16,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
-  dateLabel: { fontSize: 15, fontWeight: '700', color: theme.COLORS.black },
-  typeBadge: {
-    backgroundColor: 'rgba(76,111,255,0.08)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 16,
+  backBtn: {
+    padding: 8,
+    width: 40,
   },
-  typeBadgeText: {
-    color: theme.COLORS.primary,
+  headerTitle: {
+    fontSize: 18,
     fontWeight: '700',
-    fontSize: 12,
+    color: '#fff',
   },
-
-  timesRow: {
-    flexDirection: 'row',
-    marginTop: theme.SPACING.xs,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  timeCol: { flex: 1 },
-  durationCol: { width: 100, alignItems: 'flex-end' },
-  timeLabel: { fontSize: 12, color: theme.COLORS.neutralText },
-  timeValue: { fontSize: 16, fontWeight: '700', marginTop: 6 },
-  durationValue: { fontSize: 14, fontWeight: '700', marginTop: 6 },
-
-  filterRow: {
+  searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: theme.SPACING.sm,
-  },
-  filterButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    backgroundColor: '#fff',
+    margin: 16,
+    marginBottom: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: 'transparent',
-    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
-  filterButtonActive: { backgroundColor: 'rgba(76,111,255,0.08)' },
-  filterText: { color: theme.COLORS.primary, fontWeight: '700' },
   searchInput: {
     flex: 1,
-    marginLeft: 8,
-    backgroundColor: theme.COLORS.bgLight,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    marginLeft: 12,
+    fontSize: 15,
+    color: '#0f172a',
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 16,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
-  employeeName: { color: theme.COLORS.neutralText, marginTop: 4, fontSize: 13 },
-  dateButton: {
-    backgroundColor: theme.COLORS.bgLight,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginLeft: 8,
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
   },
-  dateText: { color: theme.COLORS.black },
-  dateInner: { flexDirection: 'row', alignItems: 'center' },
-  dateTextLeft: { marginLeft: 8 },
-  filterButtonsRow: { flexDirection: 'row' },
-  monthRow: {
+  statValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#6366f1',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#64748b',
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: '#e2e8f0',
+    marginHorizontal: 12,
+  },
+  listContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+  },
+  recordCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  recordHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  userInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: theme.SPACING.sm,
+    flex: 1,
   },
-  monthBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-  monthLabel: { fontWeight: '700', marginHorizontal: 8 },
-  dateInput: {
-    width: 140,
-    marginLeft: 8,
-    backgroundColor: theme.COLORS.bgLight,
-    paddingHorizontal: 8,
+  typeIndicator: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  checkInIndicator: {
+    backgroundColor: '#10b981',
+  },
+  checkOutIndicator: {
+    backgroundColor: '#f59e0b',
+  },
+  userDetails: {
+    flex: 1,
+  },
+  userName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 2,
+  },
+  userEmail: {
+    fontSize: 12,
+    color: '#64748b',
+  },
+  typeBadge: {
+    paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
   },
-  employeeSelector: {
-    marginBottom: theme.SPACING.sm,
+  checkInBadge: {
+    backgroundColor: '#d1fae5',
+  },
+  checkOutBadge: {
+    backgroundColor: '#fed7aa',
+  },
+  typeBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  checkInBadgeText: {
+    color: '#065f46',
+  },
+  checkOutBadgeText: {
+    color: '#92400e',
+  },
+  recordMeta: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+  },
+  metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
   },
-  employeeItem: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: 'transparent',
-    marginRight: 8,
+  metaText: {
+    fontSize: 13,
+    color: '#64748b',
   },
-  employeeItemActive: { backgroundColor: 'rgba(76,111,255,0.12)' },
-  loadAllButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.04)',
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
   },
-  listContent: { paddingBottom: 24 },
-  emptyText: { padding: 12 },
-
-  timeOk: { color: theme.COLORS.success },
-  timeMissing: { color: theme.COLORS.error },
+  emptyText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#64748b',
+    marginTop: 16,
+  },
+  emptySubtext: {
+    fontSize: 13,
+    color: '#94a3b8',
+    marginTop: 8,
+    textAlign: 'center',
+  },
 });
 
 export default Records;

@@ -7,6 +7,8 @@ import AdminHome from './AdminHome';
 import EmployeesScreen from './EmployeesScreen';
 import RequestsScreen from './RequestsScreen';
 import EmployeeManageScreen from './EmployeeManageScreen';
+import IPRestrictionsScreen from './IPRestrictionsScreen';
+import Records from './Records';
 import { useAuth } from '../contexts/AuthContext';
 import BottomNav from '../components/BottomNav';
 import FAB from '../components/FAB';
@@ -77,6 +79,8 @@ const AdminPortal: React.FC = () => {
         component={EmployeeManageScreen}
         options={{ headerShown: true, title: 'Manage Employee' }}
       />
+      <Stack.Screen name="IPRestrictions" component={IPRestrictionsScreen} />
+      <Stack.Screen name="Records" component={Records} />
     </Stack.Navigator>
   );
 };
