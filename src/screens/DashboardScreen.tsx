@@ -6,20 +6,24 @@ import {
   RefreshControl,
   ScrollView,
   Pressable,
+  ActivityIndicator,
 } from 'react-native';
 import api from '../api/client';
 import Icon from '../components/Icon';
+import { useAuth } from '../contexts/AuthContext';
 
 const DashboardScreen: React.FC = () => {
+  const { user } = useAuth();
   const [stats, setStats] = useState<any>(null);
-  const [requests, setRequests] = useState<any[]>([]);
-  const [liveFeed, setLiveFeed] = useState<any[]>([]);
+  const [myRequests, setMyRequests] = useState<any[]>([]);
+  const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const load = async () => {
     setRefreshing(true);
     try {
-      // Load attendance stats
+      // Load MY attendance stats for current month
       const now = new Date();
       const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
       const to = now.toISOString();
@@ -28,42 +32,60 @@ const DashboardScreen: React.FC = () => {
         params: { from, to, limit: 500 },
       });
       const records = hist?.data?.data || [];
+
+      // Calculate days worked this month
       const daysSet = new Set<string>();
       records.forEach((r: any) => {
         const d = new Date(r.timestamp);
         daysSet.add(d.toISOString().slice(0, 10));
       });
 
-      const checkedIn = records.filter((r: any) => r.type === 'in').length;
-      const total = Math.max(daysSet.size * 2, 1);
-      const percent = Math.round((checkedIn / total) * 100);
+      const totalCheckins = records.filter((r: any) => r.type === 'in').length;
+      const totalCheckouts = records.filter(
+        (r: any) => r.type === 'out',
+      ).length;
+      const daysWorked = daysSet.size;
 
-      setStats({
-        checkedIn,
-        total,
-        percent,
-      });
-
-      // Load pending requests
-      try {
-        const reqRes = await api.get('/api/devices/requests');
-        const allReqs = reqRes?.data?.success
-          ? reqRes.data.data
-          : reqRes?.data || [];
-        const pending = Array.isArray(allReqs)
-          ? allReqs.filter((r: any) => r.status === 'pending')
-          : [];
-        setRequests(pending);
-      } catch {
-        setRequests([]);
+      // Calculate current month working days (excluding weekends)
+      const year = now.getFullYear();
+      const month = now.getMonth();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      let workingDays = 0;
+      for (let day = 1; day <= now.getDate(); day++) {
+        const date = new Date(year, month, day);
+        const dayOfWeek = date.getDay();
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) workingDays++;
       }
 
-      // Use recent records as live feed
-      setLiveFeed(records.slice(0, 3));
+      const attendancePercent =
+        workingDays > 0 ? Math.round((daysWorked / workingDays) * 100) : 0;
+
+      setStats({
+        daysWorked,
+        totalCheckIns: totalCheckins,
+        totalCheckOuts: totalCheckouts,
+        attendancePercent,
+        workingDays,
+      });
+
+      // Load MY device requests
+      try {
+        const reqRes = await api.get('/api/devices/my-requests');
+        const myReqs = reqRes?.data?.success
+          ? reqRes.data.data
+          : reqRes?.data || [];
+        setMyRequests(Array.isArray(myReqs) ? myReqs : []);
+      } catch {
+        setMyRequests([]);
+      }
+
+      // Use my recent records as activity
+      setRecentActivity(records.slice(0, 5));
     } catch (e) {
-      // ignore
+      console.error('Failed to load dashboard:', e);
     } finally {
       setRefreshing(false);
+      setLoading(false);
     }
   };
 
@@ -106,10 +128,27 @@ const DashboardScreen: React.FC = () => {
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMins / 60);
 
+    if (diffMins < 1) return 'Just now';
     if (diffMins < 60) return `${diffMins} min ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     return `${Math.floor(diffHours / 24)}d ago`;
   };
+
+  if (loading) {
+    return (
+      <View style={styles.screen}>
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.headerTitle}>My Dashboard</Text>
+            <Text style={styles.headerSubtitle}>{formatDate()}</Text>
+          </View>
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#6366f1" />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <ScrollView
@@ -122,13 +161,15 @@ const DashboardScreen: React.FC = () => {
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.headerTitle}>Dashboard</Text>
+          <Text style={styles.headerTitle}>My Dashboard</Text>
           <Text style={styles.headerSubtitle}>{formatDate()}</Text>
         </View>
-        <Pressable style={styles.notificationBtn}>
-          <Icon name="bell" size={20} color="#64748b" />
-          <View style={styles.notificationDot} />
-        </Pressable>
+        <View style={styles.userBadge}>
+          <Icon name="user" size={16} color="#6366f1" />
+          <Text style={styles.userName}>
+            {user?.name?.split(' ')[0] || 'Me'}
+          </Text>
+        </View>
       </View>
 
       {/* Stats Row */}
@@ -141,113 +182,138 @@ const DashboardScreen: React.FC = () => {
               <View style={styles.activeDot} />
             </View>
           </View>
-          <Text style={styles.attendancePercent}>{stats?.percent ?? 84}%</Text>
+          <Text style={styles.attendancePercent}>
+            {stats?.attendancePercent ?? 0}%
+          </Text>
           <Text style={styles.attendanceSubtext}>
-            {stats?.checkedIn ?? 42}/{stats?.total ?? 50} Checked in
+            {stats?.daysWorked ?? 0}/{stats?.workingDays ?? 0} Days worked
           </Text>
         </View>
 
-        {/* Requests Card */}
+        {/* Check-ins Card */}
         <View style={styles.requestsCard}>
-          <Text style={styles.requestsTitle}>REQUESTS</Text>
-          <Text style={styles.requestsCount}>
-            {requests.length.toString().padStart(2, '0')}
-          </Text>
-          <Text style={styles.requestsSubtext}>Requires Approval</Text>
+          <Text style={styles.requestsTitle}>MY CHECK-INS</Text>
+          <Text style={styles.requestsCount}>{stats?.totalCheckIns ?? 0}</Text>
+          <Text style={styles.requestsSubtext}>This month</Text>
         </View>
       </View>
 
-      {/* Administration Section */}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>ADMINISTRATION</Text>
-      </View>
-      <View style={styles.adminRow}>
-        <Pressable style={styles.adminCard}>
-          <View style={styles.adminIconContainer}>
-            <Icon name="shield" size={24} color="#6366f1" />
-          </View>
-          <Text style={styles.adminTitle}>IP Config</Text>
-          <Text style={styles.adminSubtitle}>Manage allowed networks</Text>
-        </Pressable>
-
-        <Pressable style={styles.adminCard}>
-          <View style={styles.adminIconContainer}>
-            <Icon name="file-text" size={24} color="#10b981" />
-          </View>
-          <Text style={styles.adminTitle}>Records</Text>
-          <Text style={styles.adminSubtitle}>View full history logs</Text>
-        </Pressable>
-      </View>
-
-      {/* Live Feed Section */}
-      <View style={styles.liveFeedHeader}>
-        <Text style={styles.sectionTitle}>LIVE FEED</Text>
-        <Pressable>
-          <Text style={styles.viewAllBtn}>View All</Text>
-        </Pressable>
-      </View>
-
-      {liveFeed.length > 0 ? (
-        liveFeed.map((item, idx) => (
-          <View key={idx} style={styles.feedItem}>
-            <View style={styles.feedIndicator}>
-              <View style={styles.feedDot} />
-            </View>
-            <View style={styles.feedContent}>
-              <Text style={styles.feedText}>
-                <Text style={styles.feedName}>
-                  {item.user?.name || 'Sarah J.'}
-                </Text>{' '}
-                <Text style={styles.feedAction}>
-                  {item.type === 'in' ? 'checked in.' : 'checked out.'}
-                </Text>
-              </Text>
-              <Text style={styles.feedTime}>{getTimeAgo(item.timestamp)}</Text>
-            </View>
-          </View>
-        ))
-      ) : (
+      {/* My Requests Section */}
+      {myRequests.length > 0 && (
         <>
-          <View style={styles.feedItem}>
-            <View style={styles.feedIndicator}>
-              <View style={styles.feedDot} />
-            </View>
-            <View style={styles.feedContent}>
-              <Text style={styles.feedText}>
-                <Text style={styles.feedName}>Sarah J.</Text>{' '}
-                <Text style={styles.feedAction}>checked in.</Text>
-              </Text>
-              <Text style={styles.feedTime}>2m ago</Text>
-            </View>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>My Device Requests</Text>
+            <Text style={styles.sectionCount}>{myRequests.length}</Text>
           </View>
-          <View style={styles.feedItem}>
-            <View style={styles.feedIndicator}>
-              <View style={styles.feedDot} />
-            </View>
-            <View style={styles.feedContent}>
-              <Text style={styles.feedText}>
-                <Text style={styles.feedName}>Sarah J.</Text>{' '}
-                <Text style={styles.feedAction}>checked in.</Text>
-              </Text>
-              <Text style={styles.feedTime}>2m ago</Text>
-            </View>
-          </View>
-          <View style={styles.feedItem}>
-            <View style={styles.feedIndicator}>
-              <View style={styles.feedDot} />
-            </View>
-            <View style={styles.feedContent}>
-              <Text style={styles.feedText}>
-                <Text style={styles.feedName}>Sarah J.</Text>{' '}
-                <Text style={styles.feedAction}>checked in.</Text>
-              </Text>
-              <Text style={styles.feedTime}>2m ago</Text>
-            </View>
+
+          <View style={styles.requestsList}>
+            {myRequests.slice(0, 3).map((req: any, idx: number) => (
+              <View key={idx} style={styles.requestItem}>
+                <View style={styles.requestLeft}>
+                  <View
+                    style={[
+                      styles.requestIconContainer,
+                      req.status === 'pending' && styles.pendingBg,
+                      req.status === 'approved' && styles.approvedBg,
+                      req.status === 'rejected' && styles.rejectedBg,
+                    ]}
+                  >
+                    <Icon
+                      name={
+                        req.status === 'pending'
+                          ? 'clock'
+                          : req.status === 'approved'
+                          ? 'check-circle'
+                          : 'x-circle'
+                      }
+                      size={18}
+                      color={
+                        req.status === 'pending'
+                          ? '#f59e0b'
+                          : req.status === 'approved'
+                          ? '#10b981'
+                          : '#ef4444'
+                      }
+                    />
+                  </View>
+                  <View>
+                    <Text style={styles.requestUser}>
+                      {req.deviceName || 'Device Change'}
+                    </Text>
+                    <Text style={styles.requestTime}>
+                      {getTimeAgo(req.createdAt)}
+                    </Text>
+                  </View>
+                </View>
+                <View
+                  style={[
+                    styles.statusBadge,
+                    req.status === 'pending' && styles.pendingBadge,
+                    req.status === 'approved' && styles.approvedBadge,
+                    req.status === 'rejected' && styles.rejectedBadge,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.statusText,
+                      req.status === 'pending' && styles.pendingText,
+                      req.status === 'approved' && styles.approvedText,
+                      req.status === 'rejected' && styles.rejectedText,
+                    ]}
+                  >
+                    {req.status}
+                  </Text>
+                </View>
+              </View>
+            ))}
           </View>
         </>
       )}
 
-      <View style={styles.bottomSpacer} />
+      {/* Recent Activity */}
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>My Recent Activity</Text>
+        <Icon name="activity" size={16} color="#94a3b8" />
+      </View>
+
+      <View style={styles.liveFeedCard}>
+        {recentActivity.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Icon name="inbox" size={32} color="#cbd5e1" />
+            <Text style={styles.emptyText}>No activity yet</Text>
+          </View>
+        ) : (
+          recentActivity.map((item: any, idx: number) => (
+            <View
+              key={idx}
+              style={[
+                styles.feedItem,
+                idx < recentActivity.length - 1 && styles.feedItemBorder,
+              ]}
+            >
+              <View
+                style={[
+                  styles.feedDot,
+                  item.type === 'in' ? styles.checkInDot : styles.checkOutDot,
+                ]}
+              />
+              <View style={styles.feedContent}>
+                <Text style={styles.feedAction}>
+                  {item.type === 'in' ? 'Checked In' : 'Checked Out'}
+                </Text>
+                <Text style={styles.feedTime}>
+                  {getTimeAgo(item.timestamp)}
+                </Text>
+              </View>
+              <Icon
+                name={item.type === 'in' ? 'log-in' : 'log-out'}
+                size={16}
+                color={item.type === 'in' ? '#10b981' : '#f59e0b'}
+              />
+            </View>
+          ))
+        )}
+      </View>
     </ScrollView>
   );
 };
@@ -257,8 +323,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f8fafc',
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   scrollContent: {
     padding: 16,
+    paddingBottom: 20,
   },
   header: {
     flexDirection: 'row',
@@ -273,21 +345,22 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 13,
-    color: '#64748b',
-    marginTop: 2,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 4,
   },
-  notificationBtn: {
-    position: 'relative',
-    padding: 8,
+  userBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
   },
-  notificationDot: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#ef4444',
+  userName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#fff',
   },
   statsRow: {
     flexDirection: 'row',
@@ -358,97 +431,146 @@ const styles = StyleSheet.create({
     color: '#64748b',
   },
   sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 12,
   },
   sectionTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#64748b',
-    letterSpacing: 1,
-  },
-  adminRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 24,
-  },
-  adminCard: {
-    flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  adminIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: '#f8fafc',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  adminTitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
     color: '#0f172a',
-    marginBottom: 4,
   },
-  adminSubtitle: {
-    fontSize: 11,
-    color: '#64748b',
-  },
-  liveFeedHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  viewAllBtn: {
-    fontSize: 12,
+  sectionCount: {
+    fontSize: 13,
     fontWeight: '600',
     color: '#6366f1',
   },
+  requestsList: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  requestItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+  },
+  requestLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
+  requestIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pendingBg: {
+    backgroundColor: '#fef3c7',
+  },
+  approvedBg: {
+    backgroundColor: '#d1fae5',
+  },
+  rejectedBg: {
+    backgroundColor: '#fee2e2',
+  },
+  requestUser: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0f172a',
+    marginBottom: 2,
+  },
+  requestTime: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+  },
+  pendingBadge: {
+    backgroundColor: '#fef3c7',
+  },
+  approvedBadge: {
+    backgroundColor: '#d1fae5',
+  },
+  rejectedBadge: {
+    backgroundColor: '#fee2e2',
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  pendingText: {
+    color: '#92400e',
+  },
+  approvedText: {
+    color: '#065f46',
+  },
+  rejectedText: {
+    color: '#991b1b',
+  },
+  liveFeedCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
   feedItem: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-    paddingVertical: 4,
+    alignItems: 'center',
+    paddingVertical: 14,
+    gap: 12,
   },
-  feedIndicator: {
-    width: 20,
-    alignItems: 'flex-start',
-    paddingTop: 6,
+  feedItemBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
   },
   feedDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
+  },
+  checkInDot: {
     backgroundColor: '#10b981',
+  },
+  checkOutDot: {
+    backgroundColor: '#f59e0b',
   },
   feedContent: {
     flex: 1,
-    marginLeft: 12,
-    justifyContent: 'center',
-  },
-  feedText: {
-    fontSize: 14,
-    color: '#0f172a',
-    marginBottom: 4,
-    lineHeight: 20,
-  },
-  feedName: {
-    fontWeight: '700',
   },
   feedAction: {
-    fontWeight: '400',
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0f172a',
+    marginBottom: 2,
   },
   feedTime: {
     fontSize: 12,
     color: '#94a3b8',
   },
-  bottomSpacer: {
-    height: 100,
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#94a3b8',
+    marginTop: 12,
   },
 });
 
