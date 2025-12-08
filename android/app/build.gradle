@@ -65,7 +65,7 @@ react {
 /**
  * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
  */
-def enableProguardInReleaseBuilds = false
+def enableProguardInReleaseBuilds = true
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -92,10 +92,7 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
-        // Limit ABIs to speed up native builds during development
-        ndk {
-            abiFilters "arm64-v8a", "armeabi-v7a"
-        }
+        // Note: ABI filters moved to splits configuration for APK splitting
     }
     signingConfigs {
         debug {
@@ -108,13 +105,35 @@ android {
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
+            // Enable resource shrinking even in debug for smaller APK
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
         release {
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.
             signingConfig signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
-            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            shrinkResources true
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+        }
+    }
+
+    // Split APKs by ABI to reduce size (each device only needs one ABI)
+    splits {
+        abi {
+            reset()
+            enable true
+            universalApk false  // Set to true if you want a universal APK
+            include "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+        }
+    }
+
+    // Compress native libraries
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = false
         }
     }
 }
