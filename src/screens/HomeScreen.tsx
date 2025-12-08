@@ -225,10 +225,21 @@ const HomeScreen: React.FC = () => {
     const asc = getAsc(records || []);
     let worked = 0;
     let currentIn: number | null = null;
+
     for (const r of asc) {
       const ts = new Date(r.timestamp).getTime();
       if (r.type === 'in') {
         currentIn = ts;
+        // Subtract any completed breaks within this check-in session
+        if (r.breaks) {
+          for (const brk of r.breaks) {
+            if (brk.end) {
+              const breakDuration =
+                new Date(brk.end).getTime() - new Date(brk.start).getTime();
+              worked -= breakDuration;
+            }
+          }
+        }
       } else if (r.type === 'out') {
         if (currentIn !== null) {
           worked += Math.max(0, ts - currentIn);
@@ -236,21 +247,29 @@ const HomeScreen: React.FC = () => {
         }
       }
     }
-    // currently checked in -> add running time (excluding current break if on break)
+
+    // currently checked in -> add running time
     if (currentIn !== null) {
-      let currentTime = Date.now() - currentIn;
-      // Subtract current break time if on break
+      const now = Date.now();
+      worked += now - currentIn;
+
+      // Subtract completed breaks from current session
       const lastRecord = asc[asc.length - 1];
-      if (lastRecord?.onBreak && lastRecord?.breaks) {
-        const lastBreak = lastRecord.breaks[lastRecord.breaks.length - 1];
-        if (lastBreak && !lastBreak.end) {
-          const breakStart = new Date(lastBreak.start).getTime();
-          currentTime -= Date.now() - breakStart;
+      if (lastRecord?.breaks) {
+        for (const brk of lastRecord.breaks) {
+          if (brk.end) {
+            const breakDuration =
+              new Date(brk.end).getTime() - new Date(brk.start).getTime();
+            worked -= breakDuration;
+          } else {
+            // Currently on break - subtract time since break started
+            const breakStart = new Date(brk.start).getTime();
+            worked -= now - breakStart;
+          }
         }
       }
-      worked += currentTime;
     }
-    return worked;
+    return Math.max(0, worked);
   };
 
   const totalBreakMs = (records: RecordItem[] | null) => {
@@ -303,7 +322,7 @@ const HomeScreen: React.FC = () => {
 
   // keep a ticking state to re-render running timer while checked in
   const [, setTick] = useState(0);
-  
+
   // Update break state when records change
   useEffect(() => {
     const asc = getAsc(recent || []);
@@ -318,7 +337,7 @@ const HomeScreen: React.FC = () => {
       setOnBreak(false);
     }
   }, [recent]);
-  
+
   useEffect(() => {
     let id: any = null;
     if (isCheckedIn(recent)) {
@@ -464,7 +483,7 @@ const HomeScreen: React.FC = () => {
               </View>
               <Text style={styles.statLabel}>Working</Text>
               <Text style={styles.statValue}>
-                {formatDuration(totalWorkedMs(recent) - totalBreakMs(recent))}
+                {formatDuration(totalWorkedMs(recent))}
               </Text>
             </View>
           </View>

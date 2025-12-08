@@ -1,15 +1,15 @@
-const express = require("express");
-const Attendance = require("../models/Attendance");
-const auth = require("../middleware/auth");
-const { verifyDeviceAndIp } = require("../middleware/ipDeviceCheck");
+const express = require('express');
+const Attendance = require('../models/Attendance');
+const auth = require('../middleware/auth');
+const { verifyDeviceAndIp } = require('../middleware/ipDeviceCheck');
 
 const router = express.Router();
 
 // POST /api/attendance/mark
-router.post("/mark", auth, verifyDeviceAndIp, async (req, res) => {
+router.post('/mark', auth, verifyDeviceAndIp, async (req, res) => {
   try {
     const user = req.user;
-    const type = req.body.type === "out" ? "out" : "in";
+    const type = req.body.type === 'out' ? 'out' : 'in';
     // Prevent consecutive identical marks (e.g., IN -> IN) to enforce IN before OUT
     const last = await Attendance.findOne({ user: user._id })
       .sort({ timestamp: -1 })
@@ -18,9 +18,9 @@ router.post("/mark", auth, verifyDeviceAndIp, async (req, res) => {
       return res.status(422).json({
         success: false,
         message:
-          type === "in"
-            ? "You have already marked IN. Please mark OUT before marking IN again."
-            : "You have already marked OUT. Please mark IN before marking OUT again.",
+          type === 'in'
+            ? 'You have already marked IN. Please mark OUT before marking IN again.'
+            : 'You have already marked OUT. Please mark IN before marking OUT again.',
       });
     }
 
@@ -38,7 +38,7 @@ router.post("/mark", auth, verifyDeviceAndIp, async (req, res) => {
 });
 
 // GET /api/attendance/history
-router.get("/history", auth, async (req, res) => {
+router.get('/history', auth, async (req, res) => {
   try {
     const user = req.user;
     // parse dates safely; if invalid, fallback to sensible defaults
@@ -68,33 +68,33 @@ router.get("/history", auth, async (req, res) => {
 });
 
 // POST /api/attendance/break/start
-router.post("/break/start", auth, verifyDeviceAndIp, async (req, res) => {
+router.post('/break/start', auth, verifyDeviceAndIp, async (req, res) => {
   try {
     const user = req.user;
     // Find the most recent check-in
     const lastCheckIn = await Attendance.findOne({
       user: user._id,
-      type: "in",
+      type: 'in',
     }).sort({ timestamp: -1 });
 
     if (!lastCheckIn) {
       return res.status(422).json({
         success: false,
-        message: "You must be checked in to start a break.",
+        message: 'You must be checked in to start a break.',
       });
     }
 
     // Check if there's a checkout after this check-in
     const checkOutAfter = await Attendance.findOne({
       user: user._id,
-      type: "out",
+      type: 'out',
       timestamp: { $gt: lastCheckIn.timestamp },
     });
 
     if (checkOutAfter) {
       return res.status(422).json({
         success: false,
-        message: "You must be checked in to start a break.",
+        message: 'You must be checked in to start a break.',
       });
     }
 
@@ -102,7 +102,7 @@ router.post("/break/start", auth, verifyDeviceAndIp, async (req, res) => {
     if (lastCheckIn.onBreak) {
       return res.status(422).json({
         success: false,
-        message: "You are already on a break.",
+        message: 'You are already on a break.',
       });
     }
 
@@ -119,20 +119,20 @@ router.post("/break/start", auth, verifyDeviceAndIp, async (req, res) => {
 });
 
 // POST /api/attendance/break/end
-router.post("/break/end", auth, verifyDeviceAndIp, async (req, res) => {
+router.post('/break/end', auth, verifyDeviceAndIp, async (req, res) => {
   try {
     const user = req.user;
     // Find the most recent check-in with an active break
     const lastCheckIn = await Attendance.findOne({
       user: user._id,
-      type: "in",
+      type: 'in',
       onBreak: true,
     }).sort({ timestamp: -1 });
 
     if (!lastCheckIn) {
       return res.status(422).json({
         success: false,
-        message: "You are not currently on a break.",
+        message: 'You are not currently on a break.',
       });
     }
 
@@ -141,7 +141,7 @@ router.post("/break/end", auth, verifyDeviceAndIp, async (req, res) => {
     if (!lastBreak || lastBreak.end) {
       return res.status(422).json({
         success: false,
-        message: "No active break found.",
+        message: 'No active break found.',
       });
     }
 
