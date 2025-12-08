@@ -17,7 +17,7 @@ class GoogleSheetsService {
     const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
     return match ? match[1] : null;
   }
- 
+
   /**
    * Prepare headers for the sheet
    */
@@ -39,12 +39,12 @@ class GoogleSheetsService {
   /**
    * Format attendance record for sheet
    */
-  formatAttendanceRecord(attendance, user) {
-    const checkInDate = attendance.checkInTime
-      ? new Date(attendance.checkInTime)
+  formatAttendanceRecord(checkInRecord, checkOutRecord, user) {
+    const checkInDate = checkInRecord?.timestamp
+      ? new Date(checkInRecord.timestamp)
       : null;
-    const checkOutDate = attendance.checkOutTime
-      ? new Date(attendance.checkOutTime)
+    const checkOutDate = checkOutRecord?.timestamp
+      ? new Date(checkOutRecord.timestamp)
       : null;
 
     const formatTime = date => {
@@ -69,13 +69,26 @@ class GoogleSheetsService {
     const calculateDuration = () => {
       if (!checkInDate || !checkOutDate) return '';
       const diffMs = checkOutDate - checkInDate;
-      const hours = (diffMs / (1000 * 60 * 60)).toFixed(2);
+
+      // Subtract break time if breaks exist
+      let breakMs = 0;
+      if (checkInRecord?.breaks) {
+        for (const brk of checkInRecord.breaks) {
+          if (brk.end) {
+            breakMs +=
+              new Date(brk.end).getTime() - new Date(brk.start).getTime();
+          }
+        }
+      }
+
+      const workMs = diffMs - breakMs;
+      const hours = (workMs / (1000 * 60 * 60)).toFixed(2);
       return hours;
     };
 
     const getStatus = () => {
-      if (!attendance.checkInTime) return 'Absent';
-      if (!attendance.checkOutTime) return 'Checked In';
+      if (!checkInRecord) return 'Absent';
+      if (!checkOutRecord) return 'Checked In';
       return 'Completed';
     };
 
@@ -87,9 +100,9 @@ class GoogleSheetsService {
       formatTime(checkOutDate),
       calculateDuration(),
       getStatus(),
-      attendance.deviceId || '',
-      attendance.checkInLocation || '',
-      attendance.checkOutLocation || '',
+      checkInRecord?.deviceId || checkOutRecord?.deviceId || '',
+      checkInRecord?.ip || '',
+      checkOutRecord?.ip || '',
     ];
   }
 
@@ -99,14 +112,34 @@ class GoogleSheetsService {
    */
   async syncViaWebApp(webAppUrl, data) {
     try {
+      console.log(`Syncing ${data.length} rows to Web App:`, webAppUrl);
       const axios = require('axios');
-      const response = await axios.post(webAppUrl, {
-        action: 'append',
-        data: data,
-      });
+      const response = await axios.post(
+        webAppUrl,
+        {
+          action: 'append',
+          data: data,
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          timeout: 30000, // 30 second timeout
+        },
+      );
+      console.log('Web App response:', response.data);
       return response.data;
     } catch (error) {
-      throw new Error('Failed to sync via web app: ' + error.message);
+      console.error('Web App sync error:', error.message);
+      if (error.response) {
+        console.error('Response data:', error.response.data);
+        console.error('Response status:', error.response.status);
+      }
+      throw new Error(
+        'Failed to sync via web app: ' +
+          error.message +
+          (error.response ? ` (Status: ${error.response.status})` : ''),
+      );
     }
   }
 
@@ -119,16 +152,17 @@ class GoogleSheetsService {
       // Get attendance records since last sync or from specified date
       const query = {};
       if (fromDate) {
-        query.checkInTime = { $gte: fromDate };
+        query.timestamp = { $gte: fromDate };
       } else if (config.lastSyncedAt) {
-        query.checkInTime = { $gte: config.lastSyncedAt };
+        query.timestamp = { $gte: config.lastSyncedAt };
       }
       // If no date filter, get all records (first sync)
 
       console.log('Syncing with query:', query);
       const attendanceRecords = await Attendance.find(query)
-        .sort({ checkInTime: 1 })
-        .limit(1000); // Limit to prevent overwhelming the API
+        .populate('user')
+        .sort({ timestamp: 1 })
+        .limit(2000); // Limit to prevent overwhelming the API
 
       console.log(`Found ${attendanceRecords.length} attendance records`);
 
@@ -136,24 +170,48 @@ class GoogleSheetsService {
         return { success: true, recordsCount: 0 };
       }
 
-      // Get user details for all records
-      const userIds = [...new Set(attendanceRecords.map(a => a.userId))].filter(
-        Boolean,
-      );
-      const users = await User.find({ _id: { $in: userIds } });
-      const userMap = {};
-      users.forEach(user => {
-        if (user && user._id) {
-          userMap[user._id.toString()] = user;
+      // Group records by user and date to pair check-ins with check-outs
+      const groupedRecords = {};
+
+      attendanceRecords.forEach(record => {
+        if (!record.user) return;
+
+        const userId = record.user._id.toString();
+        const dateKey = new Date(record.timestamp).toISOString().split('T')[0];
+        const key = `${userId}_${dateKey}`;
+
+        if (!groupedRecords[key]) {
+          groupedRecords[key] = {
+            user: record.user,
+            checkIn: null,
+            checkOut: null,
+          };
+        }
+
+        if (record.type === 'in') {
+          // Take the first check-in of the day
+          if (!groupedRecords[key].checkIn) {
+            groupedRecords[key].checkIn = record;
+          }
+        } else if (record.type === 'out') {
+          // Take the last check-out of the day
+          groupedRecords[key].checkOut = record;
         }
       });
 
       // Format records for sheet
-      const rows = attendanceRecords.map(attendance => {
-        const userId = attendance.userId ? attendance.userId.toString() : null;
-        const user = userId ? userMap[userId] : null;
-        return this.formatAttendanceRecord(attendance, user);
+      const rows = [];
+      Object.values(groupedRecords).forEach(group => {
+        rows.push(
+          this.formatAttendanceRecord(
+            group.checkIn,
+            group.checkOut,
+            group.user,
+          ),
+        );
       });
+
+      console.log(`Formatted ${rows.length} rows for sync`);
 
       // If a web app URL is provided in the spreadsheet URL, use that
       if (
