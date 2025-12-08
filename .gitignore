@@ -37,6 +37,12 @@ local.properties
 !debug.keystore
 .kotlin/
 
+# APK files (too large for Git)
+*.apk
+*.aab
+apk-output/*.apk
+android/app/build/outputs/
+
 # node.js
 #
 node_modules/
