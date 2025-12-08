@@ -28,7 +28,23 @@ type AttendanceRecord = {
   };
 };
 
-type DateFilter = 'today' | 'yesterday' | 'week' | 'month' | 'custom' | 'all';
+type MergedAttendanceRecord = {
+  date: string; // YYYY-MM-DD format
+  dateDisplay: string; // Formatted display date
+  firstCheckIn: string | null;
+  lastCheckOut: string | null;
+  totalHours: number | null;
+  checkInCount: number;
+  checkOutCount: number;
+  user: {
+    _id: string;
+    name?: string;
+    email?: string;
+  };
+  ips: string[];
+};
+
+type DateFilter = 'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom';
 
 const Records: React.FC = () => {
   const navigation = useNavigation();
@@ -217,6 +233,90 @@ const Records: React.FC = () => {
     };
   };
 
+  // Merge records by date and user
+  const mergeRecordsByDate = (
+    records: AttendanceRecord[],
+  ): MergedAttendanceRecord[] => {
+    // Group records by date and user
+    const grouped: Record<string, AttendanceRecord[]> = {};
+
+    records.forEach(record => {
+      const date = new Date(record.timestamp);
+      const dateKey = `${date.getFullYear()}-${String(
+        date.getMonth() + 1,
+      ).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      const key = `${dateKey}_${record.user._id}`;
+
+      if (!grouped[key]) {
+        grouped[key] = [];
+      }
+      grouped[key].push(record);
+    });
+
+    // Process each group
+    const merged: MergedAttendanceRecord[] = Object.entries(grouped).map(
+      ([key, records]) => {
+        const [dateKey, userId] = key.split('_');
+
+        // Get all check-ins and check-outs
+        const checkIns = records
+          .filter(r => r.type === 'in')
+          .sort(
+            (a, b) =>
+              new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+          );
+        const checkOuts = records
+          .filter(r => r.type === 'out')
+          .sort(
+            (a, b) =>
+              new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+          );
+
+        // Get first check-in and last check-out
+        const firstCheckIn = checkIns.length > 0 ? checkIns[0].timestamp : null;
+        const lastCheckOut =
+          checkOuts.length > 0
+            ? checkOuts[checkOuts.length - 1].timestamp
+            : null;
+
+        // Calculate total hours
+        let totalHours: number | null = null;
+        if (firstCheckIn && lastCheckOut) {
+          const startTime = new Date(firstCheckIn).getTime();
+          const endTime = new Date(lastCheckOut).getTime();
+          totalHours = (endTime - startTime) / (1000 * 60 * 60); // Convert to hours
+        }
+
+        // Collect unique IPs
+        const ips = [...new Set(records.filter(r => r.ip).map(r => r.ip!))];
+
+        // Format date for display
+        const date = new Date(dateKey);
+        const dateDisplay = formatDateTime(records[0].timestamp).date;
+
+        return {
+          date: dateKey,
+          dateDisplay,
+          firstCheckIn,
+          lastCheckOut,
+          totalHours,
+          checkInCount: checkIns.length,
+          checkOutCount: checkOuts.length,
+          user: records[0].user,
+          ips,
+        };
+      },
+    );
+
+    // Sort by date descending (newest first)
+    return merged.sort((a, b) => b.date.localeCompare(a.date));
+  };
+
+  // Get merged records
+  const mergedRecords = React.useMemo(() => {
+    return mergeRecordsByDate(filteredRecords);
+  }, [filteredRecords]);
+
   const getFilterLabel = () => {
     switch (dateFilter) {
       case 'today':
@@ -234,26 +334,30 @@ const Records: React.FC = () => {
     }
   };
 
-  const renderRecord = ({ item }: { item: AttendanceRecord }) => {
-    const { date, time } = formatDateTime(item.timestamp);
-    const isCheckIn = item.type === 'in';
+  const formatHours = (hours: number | null) => {
+    if (hours === null) return 'N/A';
+    const h = Math.floor(hours);
+    const m = Math.round((hours - h) * 60);
+    if (h === 0) return `${m}m`;
+    if (m === 0) return `${h}h`;
+    return `${h}h ${m}m`;
+  };
+
+  const renderMergedRecord = ({ item }: { item: MergedAttendanceRecord }) => {
     const isEmployee = user?.role !== 'admin';
+    const firstCheckInTime = item.firstCheckIn
+      ? formatDateTime(item.firstCheckIn).time
+      : 'N/A';
+    const lastCheckOutTime = item.lastCheckOut
+      ? formatDateTime(item.lastCheckOut).time
+      : 'N/A';
 
     return (
       <View style={styles.recordCard}>
         <View style={styles.recordHeader}>
           <View style={styles.userInfo}>
-            <View
-              style={[
-                styles.typeIndicator,
-                isCheckIn ? styles.checkInIndicator : styles.checkOutIndicator,
-              ]}
-            >
-              <Icon
-                name={isCheckIn ? 'log-in' : 'log-out'}
-                size={16}
-                color="#fff"
-              />
+            <View style={[styles.typeIndicator, styles.mergedIndicator]}>
+              <Icon name="calendar" size={20} color="#fff" />
             </View>
             <View style={styles.userDetails}>
               {!isEmployee && (
@@ -266,45 +370,60 @@ const Records: React.FC = () => {
                   )}
                 </>
               )}
-              {isEmployee && (
-                <Text style={styles.userName}>
-                  {isCheckIn ? 'Checked In' : 'Checked Out'}
-                </Text>
-              )}
+              {isEmployee && <Text style={styles.userName}>Daily Summary</Text>}
             </View>
           </View>
-          <View
-            style={[
-              styles.typeBadge,
-              isCheckIn ? styles.checkInBadge : styles.checkOutBadge,
-            ]}
-          >
-            <Text
-              style={[
-                styles.typeBadgeText,
-                isCheckIn ? styles.checkInBadgeText : styles.checkOutBadgeText,
-              ]}
-            >
-              {isCheckIn ? 'Check In' : 'Check Out'}
+          <View style={styles.totalHoursBadge}>
+            <Text style={styles.totalHoursText}>
+              {formatHours(item.totalHours)}
             </Text>
           </View>
         </View>
+
         <View style={styles.recordMeta}>
           <View style={styles.metaItem}>
             <Icon name="calendar" size={14} color="#64748b" />
-            <Text style={styles.metaText}>{date}</Text>
+            <Text style={styles.metaText}>{item.dateDisplay}</Text>
           </View>
-          <View style={styles.metaItem}>
-            <Icon name="clock" size={14} color="#64748b" />
-            <Text style={styles.metaText}>{time}</Text>
-          </View>
-          {item.ip && (
-            <View style={styles.metaItem}>
-              <Icon name="globe" size={14} color="#64748b" />
-              <Text style={styles.metaText}>{item.ip}</Text>
-            </View>
-          )}
         </View>
+
+        <View style={styles.timeRangeContainer}>
+          <View style={styles.timeRangeItem}>
+            <View style={styles.timeRangeLabel}>
+              <Icon name="log-in" size={14} color="#10b981" />
+              <Text style={styles.timeRangeLabelText}>First Check In</Text>
+            </View>
+            <Text style={styles.timeRangeValue}>{firstCheckInTime}</Text>
+          </View>
+          <View style={styles.timeRangeDivider} />
+          <View style={styles.timeRangeItem}>
+            <View style={styles.timeRangeLabel}>
+              <Icon name="log-out" size={14} color="#f59e0b" />
+              <Text style={styles.timeRangeLabelText}>Last Check Out</Text>
+            </View>
+            <Text style={styles.timeRangeValue}>{lastCheckOutTime}</Text>
+          </View>
+        </View>
+
+        <View style={styles.countContainer}>
+          <View style={styles.countBadge}>
+            <Icon name="log-in" size={12} color="#10b981" />
+            <Text style={styles.countText}>{item.checkInCount} check-ins</Text>
+          </View>
+          <View style={[styles.countBadge, styles.checkOutCountBadge]}>
+            <Icon name="log-out" size={12} color="#f59e0b" />
+            <Text style={styles.countText}>
+              {item.checkOutCount} check-outs
+            </Text>
+          </View>
+        </View>
+
+        {item.ips.length > 0 && (
+          <View style={styles.ipContainer}>
+            <Icon name="globe" size={12} color="#94a3b8" />
+            <Text style={styles.ipText}>{item.ips.join(', ')}</Text>
+          </View>
+        )}
       </View>
     );
   };
@@ -367,30 +486,30 @@ const Records: React.FC = () => {
       {/* Stats */}
       <View style={styles.statsContainer}>
         <View style={styles.statItem}>
-          <Text style={styles.statValue}>{filteredRecords.length}</Text>
-          <Text style={styles.statLabel}>Total Records</Text>
+          <Text style={styles.statValue}>{mergedRecords.length}</Text>
+          <Text style={styles.statLabel}>Days</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
           <Text style={styles.statValue}>
             {filteredRecords.filter(r => r.type === 'in').length}
           </Text>
-          <Text style={styles.statLabel}>Check Ins</Text>
+          <Text style={styles.statLabel}>Total Check Ins</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
           <Text style={styles.statValue}>
             {filteredRecords.filter(r => r.type === 'out').length}
           </Text>
-          <Text style={styles.statLabel}>Check Outs</Text>
+          <Text style={styles.statLabel}>Total Check Outs</Text>
         </View>
       </View>
 
       {/* Records List */}
       <FlatList
-        data={filteredRecords}
-        renderItem={renderRecord}
-        keyExtractor={item => item._id}
+        data={mergedRecords}
+        renderItem={renderMergedRecord}
+        keyExtractor={item => `${item.date}_${item.user._id}`}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl
@@ -741,6 +860,86 @@ const styles = StyleSheet.create({
   filterOptionTextActive: {
     color: '#6366f1',
     fontWeight: '600',
+  },
+  mergedIndicator: {
+    backgroundColor: '#6366f1',
+  },
+  totalHoursBadge: {
+    backgroundColor: '#eef2ff',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  totalHoursText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#6366f1',
+  },
+  timeRangeContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 12,
+    gap: 12,
+  },
+  timeRangeItem: {
+    flex: 1,
+  },
+  timeRangeLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 4,
+  },
+  timeRangeLabelText: {
+    fontSize: 11,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  timeRangeValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  timeRangeDivider: {
+    width: 1,
+    backgroundColor: '#e2e8f0',
+  },
+  countContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  countBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#d1fae5',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    gap: 4,
+  },
+  checkOutCountBadge: {
+    backgroundColor: '#fed7aa',
+  },
+  countText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0f172a',
+  },
+  ipContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  ipText: {
+    fontSize: 11,
+    color: '#94a3b8',
   },
 });
 
