@@ -102,7 +102,7 @@ const RequestsScreen: React.FC = () => {
             History
           </Text>
         </Pressable>
-        <Pressable
+        {/* <Pressable
           style={[styles.tab, activeTab === 'all' && styles.tabActive]}
           onPress={() => setActiveTab('all')}
         >
@@ -114,7 +114,7 @@ const RequestsScreen: React.FC = () => {
           >
             All
           </Text>
-        </Pressable>
+        </Pressable> */}
       </View>
 
       {/* Requests List */}

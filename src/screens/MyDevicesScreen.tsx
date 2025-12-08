@@ -28,7 +28,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 20,
+    paddingBottom: 100,
   },
   header: {
     backgroundColor: '#6366f1',
@@ -397,6 +397,7 @@ const MyDevicesScreen: React.FC = () => {
         payload?.deviceId ||
         res?.data?.deviceId ||
         payload?.registeredDeviceId ||
+        user?.registeredDevice?.id ||
         null;
 
       // requests may be under payload.requests, res.data.requests, or payload itself
@@ -424,14 +425,14 @@ const MyDevicesScreen: React.FC = () => {
           new Date().toISOString(),
       }));
 
-      setDeviceId(resolvedDeviceId ?? user?.registeredDevice?.id ?? null);
+      setDeviceId(resolvedDeviceId);
       setRequests(normalized);
     } catch {
       // ignore
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, []); // Remove user from dependency array
 
   useEffect(() => {
     load();
@@ -465,8 +466,9 @@ const MyDevicesScreen: React.FC = () => {
           text1: 'Device change requested',
           visibilityTime: 2500,
         });
-        setRequests(prev => [res.data.data, ...prev]);
         setReason('');
+        // Reload to get updated requests list
+        await load();
       } else {
         Toast.show({
           type: 'error',

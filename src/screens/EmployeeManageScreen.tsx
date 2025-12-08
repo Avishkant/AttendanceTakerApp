@@ -717,6 +717,45 @@ const EmployeeManageScreen: React.FC = () => {
           </View>
         </View>
       )}
+
+      {/* Deregister Device Confirmation Modal */}
+      {showDeregisterConfirm && (
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, styles.deleteModalCard]}>
+            <View style={styles.deleteModalIcon}>
+              <View
+                style={[
+                  styles.deleteIconCircle,
+                  { backgroundColor: '#fef3c7' },
+                ]}
+              >
+                <Icon name="smartphone" size={32} color="#f59e0b" />
+              </View>
+            </View>
+            <Text style={styles.deleteModalTitle}>Deregister Device?</Text>
+            <Text style={styles.deleteModalText}>
+              Are you sure you want to deregister the device for {employee.name}
+              ? They will need to register a new device before they can check in
+              or out.
+            </Text>
+            <View style={styles.deleteModalActions}>
+              <Pressable
+                style={[styles.modalBtn, styles.modalBtnSecondary]}
+                onPress={() => setShowDeregisterConfirm(false)}
+              >
+                <Text style={styles.modalBtnSecondaryText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalBtn, styles.deleteModalBtnDanger]}
+                onPress={performDeregister}
+              >
+                <Icon name="x-circle" size={16} color="#fff" />
+                <Text style={styles.deleteModalBtnText}>Deregister</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      )}
     </View>
   );
 };
@@ -1192,12 +1231,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 16,
+    zIndex: 9999,
   },
   modalCard: {
     backgroundColor: '#fff',
     borderRadius: 16,
     width: '100%',
     maxWidth: 400,
+    elevation: 10,
   },
   modalHeader: {
     flexDirection: 'row',

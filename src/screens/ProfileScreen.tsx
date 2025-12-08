@@ -219,7 +219,7 @@ const ProfileScreen: React.FC = () => {
         </View>
 
         {/* Device Requests */}
-        {requests.length > 0 && (
+        {/* {requests.length > 0 && (
           <>
             <View style={styles.sectionHeader}>
               <Icon name="clock" size={18} color="#64748b" />
@@ -234,7 +234,7 @@ const ProfileScreen: React.FC = () => {
                       {formatDate(request.createdAt)}
                     </Text>
                     <Text style={styles.requestDevice}>
-                      {request.deviceName || 'Device Change'}
+                      {request.newDeviceId || 'Device Change'}
                     </Text>
                   </View>
                   <View
@@ -261,7 +261,7 @@ const ProfileScreen: React.FC = () => {
               </View>
             ))}
           </>
-        )}
+        )} */}
 
         {/* Account Stats */}
         <View style={styles.sectionHeader}>
@@ -297,7 +297,7 @@ const ProfileScreen: React.FC = () => {
           <Text style={styles.logoutText}>Logout</Text>
         </Pressable>
 
-        <View style={{ height: 40 }} />
+        <View style={{ height: 100 }} />
       </ScrollView>
     </View>
   );

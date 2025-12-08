@@ -1,24 +1,25 @@
-const express = require("express");
-const auth = require("../middleware/auth");
-const User = require("../models/User");
-const Attendance = require("../models/Attendance");
-const mongoose = require("mongoose");
-const createCsvStringifier = require("csv-writer").createObjectCsvStringifier;
+const express = require('express');
+const auth = require('../middleware/auth');
+const User = require('../models/User');
+const Attendance = require('../models/Attendance');
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+const createCsvStringifier = require('csv-writer').createObjectCsvStringifier;
 
 const router = express.Router();
 
 // Middleware: admin only
 router.use(auth, (req, res, next) => {
-  if (req.user.role !== "admin")
-    return res.status(403).json({ success: false, message: "Forbidden" });
+  if (req.user.role !== 'admin')
+    return res.status(403).json({ success: false, message: 'Forbidden' });
   next();
 });
 
 // GET /api/admin/employees
-router.get("/employees", async (req, res) => {
+router.get('/employees', async (req, res) => {
   try {
     const list = await User.find()
-      .select("-passwordHash")
+      .select('-passwordHash')
       .sort({ createdAt: -1 });
     return res.json({ success: true, data: list });
   } catch (err) {
@@ -28,7 +29,7 @@ router.get("/employees", async (req, res) => {
 });
 
 // GET /api/admin/employees/:id/attendance
-router.get("/employees/:id/attendance", async (req, res) => {
+router.get('/employees/:id/attendance', async (req, res) => {
   try {
     const id = req.params.id;
     // parse dates safely
@@ -43,25 +44,25 @@ router.get("/employees/:id/attendance", async (req, res) => {
     const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 100));
     const groupBy = req.query.groupBy || null; // 'day' | 'week' | 'month' or null
     console.log(
-      `[admin] attendance for user=${id} from=${from.toISOString()} to=${to.toISOString()} groupBy=${groupBy} page=${page} limit=${limit}`
+      `[admin] attendance for user=${id} from=${from.toISOString()} to=${to.toISOString()} groupBy=${groupBy} page=${page} limit=${limit}`,
     );
-    const Attendance = require("../models/Attendance");
+    const Attendance = require('../models/Attendance');
 
-    if (groupBy && ["day", "week", "month"].includes(groupBy)) {
+    if (groupBy && ['day', 'week', 'month'].includes(groupBy)) {
       // build period format expression
       let periodExpr;
-      if (groupBy === "day") {
+      if (groupBy === 'day') {
         periodExpr = {
-          $dateToString: { format: "%Y-%m-%d", date: "$timestamp" },
+          $dateToString: { format: '%Y-%m-%d', date: '$timestamp' },
         };
-      } else if (groupBy === "month") {
-        periodExpr = { $dateToString: { format: "%Y-%m", date: "$timestamp" } };
-      } else if (groupBy === "week") {
+      } else if (groupBy === 'month') {
+        periodExpr = { $dateToString: { format: '%Y-%m', date: '$timestamp' } };
+      } else if (groupBy === 'week') {
         periodExpr = {
           $concat: [
-            { $toString: { $isoWeekYear: "$timestamp" } },
-            "-W",
-            { $toString: { $isoWeek: "$timestamp" } },
+            { $toString: { $isoWeekYear: '$timestamp' } },
+            '-W',
+            { $toString: { $isoWeek: '$timestamp' } },
           ],
         };
       }
@@ -77,24 +78,24 @@ router.get("/employees/:id/attendance", async (req, res) => {
         { $addFields: { period: periodExpr } },
         {
           $group: {
-            _id: { period: "$period", type: "$type" },
+            _id: { period: '$period', type: '$type' },
             count: { $sum: 1 },
           },
         },
-        { $sort: { "_id.period": -1 } },
+        { $sort: { '_id.period': -1 } },
       ]);
 
       // reshape to [{ period, in, out }]
       const map = {};
-      agg.forEach((a) => {
+      agg.forEach(a => {
         const period = a._id.period;
         const type = a._id.type;
         map[period] = map[period] || { period, in: 0, out: 0 };
-        if (type === "in") map[period].in = a.count;
-        else if (type === "out") map[period].out = a.count;
+        if (type === 'in') map[period].in = a.count;
+        else if (type === 'out') map[period].out = a.count;
       });
       const result = Object.values(map).sort((x, y) =>
-        x.period > y.period ? -1 : 1
+        x.period > y.period ? -1 : 1,
       );
       console.log(`[admin] aggregation result count=${result.length}`);
       console.log(`[admin] aggregation sample=`, result.slice(0, 5));
@@ -134,7 +135,7 @@ router.get("/employees/:id/attendance", async (req, res) => {
     if (records.length > 0)
       console.log(
         `[admin] raw sample timestamps=`,
-        records.slice(0, 3).map((r) => r.timestamp.toISOString())
+        records.slice(0, 3).map(r => r.timestamp.toISOString()),
       );
     if (records.length === 0) {
       const match = { user: new mongoose.Types.ObjectId(id) };
@@ -163,10 +164,10 @@ router.get("/employees/:id/attendance", async (req, res) => {
 });
 
 // Diagnostic endpoint for admin: returns min/max timestamps and a small sample for a user
-router.get("/employees/:id/attendance/diagnose", async (req, res) => {
+router.get('/employees/:id/attendance/diagnose', async (req, res) => {
   try {
     const id = req.params.id;
-    const Attendance = require("../models/Attendance");
+    const Attendance = require('../models/Attendance');
     const match = { user: new mongoose.Types.ObjectId(id) };
     const total = await Attendance.countDocuments(match);
     const sampleLatest = await Attendance.find(match)
@@ -194,10 +195,10 @@ router.get("/employees/:id/attendance/diagnose", async (req, res) => {
 });
 
 // GET /api/admin/employees/:id/requests
-router.get("/employees/:id/requests", async (req, res) => {
+router.get('/employees/:id/requests', async (req, res) => {
   try {
     const id = req.params.id;
-    const list = await require("../models/DeviceChangeRequest")
+    const list = await require('../models/DeviceChangeRequest')
       .find({ user: id })
       .sort({ requestedAt: -1 });
     return res.json({ success: true, data: list });
@@ -208,10 +209,10 @@ router.get("/employees/:id/requests", async (req, res) => {
 });
 
 // GET /api/admin/settings/company-ips
-router.get("/settings/company-ips", async (req, res) => {
+router.get('/settings/company-ips', async (req, res) => {
   try {
-    const Setting = require("../models/Setting");
-    const doc = await Setting.findOne({ key: "company_allowed_ips" });
+    const Setting = require('../models/Setting');
+    const doc = await Setting.findOne({ key: 'company_allowed_ips' });
     const ips = Array.isArray(doc?.value) ? doc.value : doc?.value || [];
     return res.json({ success: true, data: ips });
   } catch (err) {
@@ -221,17 +222,17 @@ router.get("/settings/company-ips", async (req, res) => {
 });
 
 // PUT /api/admin/settings/company-ips
-router.put("/settings/company-ips", async (req, res) => {
+router.put('/settings/company-ips', async (req, res) => {
   try {
     const { ips } = req.body;
     if (!ips || !Array.isArray(ips))
       return res
         .status(422)
-        .json({ success: false, message: "ips must be an array" });
-    const Setting = require("../models/Setting");
-    let doc = await Setting.findOne({ key: "company_allowed_ips" });
+        .json({ success: false, message: 'ips must be an array' });
+    const Setting = require('../models/Setting');
+    let doc = await Setting.findOne({ key: 'company_allowed_ips' });
     if (!doc) {
-      doc = await Setting.create({ key: "company_allowed_ips", value: ips });
+      doc = await Setting.create({ key: 'company_allowed_ips', value: ips });
     } else {
       doc.value = ips;
       await doc.save();
@@ -244,19 +245,19 @@ router.put("/settings/company-ips", async (req, res) => {
 });
 
 // PATCH /api/admin/employees/:id/allowed-ips
-router.patch("/employees/:id/allowed-ips", async (req, res) => {
+router.patch('/employees/:id/allowed-ips', async (req, res) => {
   try {
     const id = req.params.id;
     const { allowedIPs } = req.body;
     if (!Array.isArray(allowedIPs))
       return res
         .status(422)
-        .json({ success: false, message: "allowedIPs must be an array" });
+        .json({ success: false, message: 'allowedIPs must be an array' });
     const user = await User.findById(id);
     if (!user)
       return res
         .status(404)
-        .json({ success: false, message: "User not found" });
+        .json({ success: false, message: 'User not found' });
     user.allowedIPs = allowedIPs;
     await user.save();
     return res.json({
@@ -270,27 +271,26 @@ router.patch("/employees/:id/allowed-ips", async (req, res) => {
 });
 
 // POST /api/admin/employees  (create)
-router.post("/employees", async (req, res) => {
+router.post('/employees', async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
     if (!name || !email || !password)
       return res
         .status(422)
-        .json({ success: false, message: "Missing fields" });
+        .json({ success: false, message: 'Missing fields' });
     const existing = await User.findOne({ email });
     if (existing)
       return res
         .status(409)
-        .json({ success: false, message: "Email already in use" });
+        .json({ success: false, message: 'Email already in use' });
     // hash password here
-    const bcrypt = require("bcryptjs");
     const salt = await bcrypt.genSalt(10);
     const hash = await bcrypt.hash(password, salt);
     const user = await User.create({
       name,
       email,
       passwordHash: hash,
-      role: role || "employee",
+      role: role || 'employee',
     });
     return res.json({
       success: true,
@@ -303,7 +303,7 @@ router.post("/employees", async (req, res) => {
 });
 
 // PATCH /api/admin/employees/:id  (update name/role)
-router.patch("/employees/:id", async (req, res) => {
+router.patch('/employees/:id', async (req, res) => {
   try {
     const id = req.params.id;
     const { name, role } = req.body;
@@ -311,7 +311,7 @@ router.patch("/employees/:id", async (req, res) => {
     if (!user)
       return res
         .status(404)
-        .json({ success: false, message: "User not found" });
+        .json({ success: false, message: 'User not found' });
     if (name) user.name = name;
     if (role) user.role = role;
     await user.save();
@@ -326,16 +326,16 @@ router.patch("/employees/:id", async (req, res) => {
 });
 
 // DELETE /api/admin/employees/:id  (delete)
-router.delete("/employees/:id", async (req, res) => {
+router.delete('/employees/:id', async (req, res) => {
   try {
     const id = req.params.id;
     const user = await User.findById(id);
     if (!user)
       return res
         .status(404)
-        .json({ success: false, message: "User not found" });
+        .json({ success: false, message: 'User not found' });
     await User.deleteOne({ _id: id });
-    return res.json({ success: true, message: "User deleted" });
+    return res.json({ success: true, message: 'User deleted' });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ success: false, message: err.message });
@@ -343,24 +343,23 @@ router.delete("/employees/:id", async (req, res) => {
 });
 
 // POST /api/admin/employees/:id/reset-password
-router.post("/employees/:id/reset-password", async (req, res) => {
+router.post('/employees/:id/reset-password', async (req, res) => {
   try {
     const id = req.params.id;
     const { password } = req.body;
     if (!password)
       return res
         .status(422)
-        .json({ success: false, message: "Password required" });
+        .json({ success: false, message: 'Password required' });
     const user = await User.findById(id);
     if (!user)
       return res
         .status(404)
-        .json({ success: false, message: "User not found" });
-    const bcrypt = require("bcryptjs");
+        .json({ success: false, message: 'User not found' });
     const salt = await bcrypt.genSalt(10);
     user.passwordHash = await bcrypt.hash(password, salt);
     await user.save();
-    return res.json({ success: true, message: "Password reset" });
+    return res.json({ success: true, message: 'Password reset' });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ success: false, message: err.message });
@@ -368,17 +367,17 @@ router.post("/employees/:id/reset-password", async (req, res) => {
 });
 
 // POST /api/admin/employees/:id/deregister-device
-router.post("/employees/:id/deregister-device", async (req, res) => {
+router.post('/employees/:id/deregister-device', async (req, res) => {
   try {
     const id = req.params.id;
     const user = await User.findById(id);
     if (!user)
       return res
         .status(404)
-        .json({ success: false, message: "User not found" });
+        .json({ success: false, message: 'User not found' });
     user.registeredDevice = null;
     await user.save();
-    return res.json({ success: true, message: "Device deregistered" });
+    return res.json({ success: true, message: 'Device deregistered' });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ success: false, message: err.message });
@@ -386,42 +385,42 @@ router.post("/employees/:id/deregister-device", async (req, res) => {
 });
 
 // GET /api/admin/employees/:id/attendance/export
-router.get("/employees/:id/attendance/export", async (req, res) => {
+router.get('/employees/:id/attendance/export', async (req, res) => {
   try {
     const id = req.params.id;
     const from = req.query.from ? new Date(req.query.from) : new Date(0);
     const to = req.query.to ? new Date(req.query.to) : new Date();
-    const Attendance = require("../models/Attendance");
+    const Attendance = require('../models/Attendance');
     const records = await Attendance.find({
       user: id,
       timestamp: { $gte: from, $lte: to },
-    }).populate("user", "name email");
+    }).populate('user', 'name email');
     const createCsvStringifier =
-      require("csv-writer").createObjectCsvStringifier;
+      require('csv-writer').createObjectCsvStringifier;
     const csvStringifier = createCsvStringifier({
       header: [
-        { id: "user", title: "User" },
-        { id: "email", title: "Email" },
-        { id: "type", title: "Type" },
-        { id: "timestamp", title: "Timestamp" },
-        { id: "ip", title: "IP" },
-        { id: "deviceId", title: "DeviceId" },
+        { id: 'user', title: 'User' },
+        { id: 'email', title: 'Email' },
+        { id: 'type', title: 'Type' },
+        { id: 'timestamp', title: 'Timestamp' },
+        { id: 'ip', title: 'IP' },
+        { id: 'deviceId', title: 'DeviceId' },
       ],
     });
-    const recordsForCsv = records.map((r) => ({
-      user: r.user?.name || "",
-      email: r.user?.email || "",
+    const recordsForCsv = records.map(r => ({
+      user: r.user?.name || '',
+      email: r.user?.email || '',
       type: r.type,
       timestamp: r.timestamp.toISOString(),
-      ip: r.ip || "",
-      deviceId: r.deviceId || "",
+      ip: r.ip || '',
+      deviceId: r.deviceId || '',
     }));
     const header = csvStringifier.getHeaderString();
     const csv = header + csvStringifier.stringifyRecords(recordsForCsv);
-    res.setHeader("Content-Type", "text/csv");
+    res.setHeader('Content-Type', 'text/csv');
     res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="attendance_user_${id}_${Date.now()}.csv"`
+      'Content-Disposition',
+      `attachment; filename="attendance_user_${id}_${Date.now()}.csv"`,
     );
     return res.send(csv);
   } catch (err) {
@@ -432,31 +431,31 @@ router.get("/employees/:id/attendance/export", async (req, res) => {
 
 // POST /api/admin/employees/:id/attendance
 // Admin can create an attendance record for a user (used when user forgot to mark)
-router.post("/employees/:id/attendance", async (req, res) => {
+router.post('/employees/:id/attendance', async (req, res) => {
   try {
     const id = req.params.id;
     const { type, timestamp, note } = req.body;
-    if (!type || !["in", "out"].includes(type))
-      return res.status(422).json({ success: false, message: "Invalid type" });
+    if (!type || !['in', 'out'].includes(type))
+      return res.status(422).json({ success: false, message: 'Invalid type' });
 
     const user = await User.findById(id);
     if (!user)
       return res
         .status(404)
-        .json({ success: false, message: "User not found" });
+        .json({ success: false, message: 'User not found' });
 
     let ts = timestamp ? new Date(timestamp) : new Date();
     if (isNaN(ts.getTime())) ts = new Date();
 
-    const Attendance = require("../models/Attendance");
+    const Attendance = require('../models/Attendance');
     const rec = await Attendance.create({
       user: user._id,
       type,
       timestamp: ts,
       ip: req.ip || null,
-      deviceId: req.headers["x-device-id"] || null,
-      note: note || "Marked by admin",
-      status: "recorded",
+      deviceId: req.headers['x-device-id'] || null,
+      note: note || 'Marked by admin',
+      status: 'recorded',
     });
 
     return res.json({ success: true, data: rec });
@@ -467,26 +466,26 @@ router.post("/employees/:id/attendance", async (req, res) => {
 });
 
 // GET /api/admin/reports?from=&to=
-router.get("/reports", async (req, res) => {
+router.get('/reports', async (req, res) => {
   try {
     const from = req.query.from ? new Date(req.query.from) : new Date(0);
     const to = req.query.to ? new Date(req.query.to) : new Date();
     const groupBy = req.query.groupBy || null; // day|week|month or null
 
-    if (groupBy && ["day", "week", "month"].includes(groupBy)) {
+    if (groupBy && ['day', 'week', 'month'].includes(groupBy)) {
       let periodExpr;
-      if (groupBy === "day")
+      if (groupBy === 'day')
         periodExpr = {
-          $dateToString: { format: "%Y-%m-%d", date: "$timestamp" },
+          $dateToString: { format: '%Y-%m-%d', date: '$timestamp' },
         };
-      else if (groupBy === "month")
-        periodExpr = { $dateToString: { format: "%Y-%m", date: "$timestamp" } };
-      else if (groupBy === "week")
+      else if (groupBy === 'month')
+        periodExpr = { $dateToString: { format: '%Y-%m', date: '$timestamp' } };
+      else if (groupBy === 'week')
         periodExpr = {
           $concat: [
-            { $toString: { $isoWeekYear: "$timestamp" } },
-            "-W",
-            { $toString: { $isoWeek: "$timestamp" } },
+            { $toString: { $isoWeekYear: '$timestamp' } },
+            '-W',
+            { $toString: { $isoWeek: '$timestamp' } },
           ],
         };
 
@@ -496,34 +495,34 @@ router.get("/reports", async (req, res) => {
         { $addFields: { period: periodExpr } },
         {
           $group: {
-            _id: { user: "$user", period: "$period", type: "$type" },
+            _id: { user: '$user', period: '$period', type: '$type' },
             count: { $sum: 1 },
           },
         },
-        { $sort: { "_id.period": -1 } },
+        { $sort: { '_id.period': -1 } },
       ]);
 
       // reshape to: { user, period, in, out }
       const map = {};
-      const mongoose = require("mongoose");
+      const mongoose = require('mongoose');
       for (const a of agg) {
         const userId = a._id.user.toString();
         const period = a._id.period;
         const key = `${userId}::${period}`;
         map[key] = map[key] || { user: userId, period, in: 0, out: 0 };
-        if (a._id.type === "in") map[key].in = a.count;
-        else if (a._id.type === "out") map[key].out = a.count;
+        if (a._id.type === 'in') map[key].in = a.count;
+        else if (a._id.type === 'out') map[key].out = a.count;
       }
       const result = Object.values(map);
       // populate user info
-      const userIds = Array.from(new Set(result.map((r) => r.user)));
+      const userIds = Array.from(new Set(result.map(r => r.user)));
       const users = await User.find({ _id: { $in: userIds } }).select(
-        "name email"
+        'name email',
       );
       const usersById = Object.fromEntries(
-        users.map((u) => [u._id.toString(), u])
+        users.map(u => [u._id.toString(), u]),
       );
-      const final = result.map((r) => ({
+      const final = result.map(r => ({
         ...r,
         userInfo: usersById[r.user] || null,
       }));
@@ -533,7 +532,7 @@ router.get("/reports", async (req, res) => {
     // default old behavior: counts per user/type
     const agg = await Attendance.aggregate([
       { $match: { timestamp: { $gte: from, $lte: to } } },
-      { $group: { _id: { user: "$user", type: "$type" }, count: { $sum: 1 } } },
+      { $group: { _id: { user: '$user', type: '$type' }, count: { $sum: 1 } } },
     ]);
     return res.json({ success: true, data: agg });
   } catch (err) {
@@ -543,40 +542,40 @@ router.get("/reports", async (req, res) => {
 });
 
 // GET /api/admin/reports/export?from=&to=
-router.get("/reports/export", async (req, res) => {
+router.get('/reports/export', async (req, res) => {
   try {
     const from = req.query.from ? new Date(req.query.from) : new Date(0);
     const to = req.query.to ? new Date(req.query.to) : new Date();
     const records = await Attendance.find({
       timestamp: { $gte: from, $lte: to },
-    }).populate("user", "name email");
+    }).populate('user', 'name email');
 
     const csvStringifier = createCsvStringifier({
       header: [
-        { id: "user", title: "User" },
-        { id: "email", title: "Email" },
-        { id: "type", title: "Type" },
-        { id: "timestamp", title: "Timestamp" },
-        { id: "ip", title: "IP" },
-        { id: "deviceId", title: "DeviceId" },
+        { id: 'user', title: 'User' },
+        { id: 'email', title: 'Email' },
+        { id: 'type', title: 'Type' },
+        { id: 'timestamp', title: 'Timestamp' },
+        { id: 'ip', title: 'IP' },
+        { id: 'deviceId', title: 'DeviceId' },
       ],
     });
 
-    const recordsForCsv = records.map((r) => ({
-      user: r.user?.name || "",
-      email: r.user?.email || "",
+    const recordsForCsv = records.map(r => ({
+      user: r.user?.name || '',
+      email: r.user?.email || '',
       type: r.type,
       timestamp: r.timestamp.toISOString(),
-      ip: r.ip || "",
-      deviceId: r.deviceId || "",
+      ip: r.ip || '',
+      deviceId: r.deviceId || '',
     }));
     const header = csvStringifier.getHeaderString();
     const csv = header + csvStringifier.stringifyRecords(recordsForCsv);
 
-    res.setHeader("Content-Type", "text/csv");
+    res.setHeader('Content-Type', 'text/csv');
     res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="attendance_${Date.now()}.csv"`
+      'Content-Disposition',
+      `attachment; filename="attendance_${Date.now()}.csv"`,
     );
     return res.send(csv);
   } catch (err) {

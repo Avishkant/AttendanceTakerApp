@@ -260,6 +260,22 @@ const AdminHome: React.FC = () => {
         <View style={styles.adminRow}>
           <Pressable
             style={styles.adminCard}
+            onPress={() => navigation.navigate('GoogleSheets')}
+          >
+            <View
+              style={[
+                styles.adminIconContainer,
+                { backgroundColor: '#d1fae5' },
+              ]}
+            >
+              <Icon name="database" size={24} color="#10b981" />
+            </View>
+            <Text style={styles.adminTitle}>Sheets Sync</Text>
+            <Text style={styles.adminSubtitle}>Google Sheets export</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.adminCard}
             onPress={() =>
               Alert.alert('Analytics', 'Analytics feature coming soon!')
             }
@@ -268,14 +284,16 @@ const AdminHome: React.FC = () => {
               style={[
                 styles.adminIconContainer,
                 { backgroundColor: '#dbeafe' },
-              ]}
+              ]} 
             >
               <Icon name="bar-chart-2" size={24} color="#3b82f6" />
             </View>
             <Text style={styles.adminTitle}>Analytics</Text>
             <Text style={styles.adminSubtitle}>View detailed reports</Text>
           </Pressable>
+        </View>
 
+        {/* <View style={styles.adminRow}>
           <Pressable
             style={styles.adminCard}
             onPress={() =>
@@ -293,7 +311,7 @@ const AdminHome: React.FC = () => {
             <Text style={styles.adminTitle}>Settings</Text>
             <Text style={styles.adminSubtitle}>App configuration</Text>
           </Pressable>
-        </View>
+        </View> */}
 
         {/* Live Feed Section */}
         <View style={styles.liveFeedHeader}>

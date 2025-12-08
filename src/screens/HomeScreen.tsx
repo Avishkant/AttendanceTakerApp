@@ -387,7 +387,7 @@ const HomeScreen: React.FC = () => {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.quickActionBtn}
-            onPress={() => navigation.navigate('MyDevices')}
+            onPress={() => navigation.navigate('Devices')}
           >
             <Icon name="smartphone" size={20} color="#6366f1" />
             <Text style={styles.quickActionText}>My Devices</Text>
@@ -548,6 +548,7 @@ const styles = StyleSheet.create({
   contentWrap: {
     padding: 20,
     paddingTop: 0,
+    paddingBottom: 100,
     marginTop: -20,
   },
 

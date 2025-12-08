@@ -9,9 +9,9 @@ import RequestsScreen from './RequestsScreen';
 import EmployeeManageScreen from './EmployeeManageScreen';
 import IPRestrictionsScreen from './IPRestrictionsScreen';
 import Records from './Records';
+import GoogleSheetsScreen from './GoogleSheetsScreen';
 import { useAuth } from '../contexts/AuthContext';
 import BottomNav from '../components/BottomNav';
-import FAB from '../components/FAB';
 
 const LogoutButton: React.FC = () => {
   const { signOut } = useAuth();
@@ -65,7 +65,6 @@ const AdminShell: React.FC = () => {
     <>
       <AdminTabs />
       <BottomNav onNavigate={handleNavigate} />
-      <FAB onPress={() => navigation.navigate('EmployeeManage')} />
     </>
   );
 };
@@ -81,6 +80,11 @@ const AdminPortal: React.FC = () => {
       />
       <Stack.Screen name="IPRestrictions" component={IPRestrictionsScreen} />
       <Stack.Screen name="Records" component={Records} />
+      <Stack.Screen
+        name="GoogleSheets"
+        component={GoogleSheetsScreen}
+        options={{ headerShown: true, title: 'Google Sheets' }}
+      />
     </Stack.Navigator>
   );
 };
