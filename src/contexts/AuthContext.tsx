@@ -1,6 +1,10 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import api, { setUnauthorizedHandler } from '../api/client';
+import api, {
+  setUnauthorizedHandler,
+  updateAuthCache,
+  clearAuthCache,
+} from '../api/client';
 import { BASE_URL } from '../config/server';
 
 type User = {
@@ -51,6 +55,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           did = uuidv4();
           await AsyncStorage.setItem('deviceId', did);
         }
+        // Initialize auth cache
+        await updateAuthCache();
+
         if (!mounted) return;
         if (t) setToken(t);
         if (u) setUser(JSON.parse(u));
@@ -64,6 +71,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setUnauthorizedHandler(() => {
       // clear storage and update state via signOut below
       (async () => {
+        clearAuthCache();
         await AsyncStorage.removeItem('token').catch(() => {});
         await AsyncStorage.removeItem('user').catch(() => {});
       })();
@@ -93,6 +101,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       setUser(u);
       await AsyncStorage.setItem('token', t);
       await AsyncStorage.setItem('user', JSON.stringify(u));
+      // Update auth cache for faster API requests
+      await updateAuthCache();
     } catch (err: any) {
       // Try to extract axios-style error information for clearer messages
       if (err && err.response && err.response.data) {
@@ -108,6 +118,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const signOut = async () => {
     setToken(null);
     setUser(null);
+    clearAuthCache();
     await AsyncStorage.removeItem('token');
     await AsyncStorage.removeItem('user');
   };

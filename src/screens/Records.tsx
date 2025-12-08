@@ -58,6 +58,9 @@ const Records: React.FC = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [page, setPage] = useState(1);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [filteredRecords, setFilteredRecords] = useState<AttendanceRecord[]>(
     [],
@@ -69,19 +72,33 @@ const Records: React.FC = () => {
   const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
   const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
 
-  const loadRecords = async () => {
+  const PAGE_SIZE = 50;
+
+  const loadRecords = async (pageNum: number = 1, append: boolean = false) => {
+    if (pageNum === 1) {
+      setLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
+
     try {
       if (user?.role === 'admin') {
-        // Load all employees
-        const empRes = await api.get('/api/admin/employees');
-        const empList = empRes?.data?.success ? empRes.data.data : [];
-        setEmployees(empList || []);
+        // Load all employees only on first page
+        let empList = employees;
+        if (pageNum === 1) {
+          const empRes = await api.get('/api/admin/employees');
+          empList = empRes?.data?.success ? empRes.data.data : [];
+          setEmployees(empList || []);
+        }
 
-        // Load attendance for all employees
+        // Load attendance for all employees with pagination
         const requests = empList.map((emp: any) =>
           api
             .get(`/api/admin/employees/${emp._id}/attendance`, {
-              params: { limit: 100 },
+              params: {
+                limit: PAGE_SIZE,
+                page: pageNum,
+              },
             })
             .then((res: any) => ({
               user: emp,
@@ -112,17 +129,26 @@ const Records: React.FC = () => {
             new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
         );
 
-        setRecords(allRecords);
-        setFilteredRecords(allRecords);
+        const newRecords = append ? [...records, ...allRecords] : allRecords;
+        setRecords(newRecords);
+        setFilteredRecords(newRecords);
+        setHasMore(allRecords.length >= PAGE_SIZE);
+        setPage(pageNum);
       } else {
-        // Employee view - show their own records
+        // Employee view - show their own records with pagination
         const res = await api.get('/api/attendance/history', {
-          params: { limit: 100 },
+          params: {
+            limit: PAGE_SIZE,
+            page: pageNum,
+          },
         });
         if (res?.data?.success) {
           const data = res.data.data || [];
-          setRecords(data);
-          setFilteredRecords(data);
+          const newRecords = append ? [...records, ...data] : data;
+          setRecords(newRecords);
+          setFilteredRecords(newRecords);
+          setHasMore(data.length >= PAGE_SIZE);
+          setPage(pageNum);
         }
       }
     } catch (err) {
@@ -130,6 +156,7 @@ const Records: React.FC = () => {
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setLoadingMore(false);
     }
   };
 
@@ -139,7 +166,15 @@ const Records: React.FC = () => {
 
   const onRefresh = () => {
     setRefreshing(true);
-    loadRecords();
+    setPage(1);
+    setHasMore(true);
+    loadRecords(1, false);
+  };
+
+  const loadMore = () => {
+    if (!loadingMore && hasMore && !loading) {
+      loadRecords(page + 1, true);
+    }
   };
 
   // Filter records based on search and date
@@ -539,6 +574,20 @@ const Records: React.FC = () => {
             onRefresh={onRefresh}
             tintColor="#6366f1"
           />
+        }
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={styles.footerLoader}>
+              <ActivityIndicator size="small" color="#6366f1" />
+              <Text style={styles.footerText}>Loading more...</Text>
+            </View>
+          ) : !hasMore && mergedRecords.length > 0 ? (
+            <View style={styles.footerLoader}>
+              <Text style={styles.footerText}>No more records</Text>
+            </View>
+          ) : null
         }
         ListEmptyComponent={
           <View style={styles.emptyState}>
@@ -973,6 +1022,17 @@ const styles = StyleSheet.create({
   ipText: {
     fontSize: 11,
     color: '#94a3b8',
+  },
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  footerText: {
+    marginTop: 8,
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '500',
   },
 });
 

@@ -29,27 +29,27 @@ const DashboardScreen: React.FC = () => {
       const to = now.toISOString();
 
       const hist = await api.get('/api/attendance/history', {
-        params: { from, to, limit: 500 },
+        params: { from, to, limit: 200 }, // Reduced from 500
       });
       const records = hist?.data?.data || [];
 
-      // Calculate days worked this month
+      // Calculate days worked this month (optimized)
       const daysSet = new Set<string>();
+      let totalCheckins = 0;
+      let totalCheckouts = 0;
+
       records.forEach((r: any) => {
         const d = new Date(r.timestamp);
         daysSet.add(d.toISOString().slice(0, 10));
+        if (r.type === 'in') totalCheckins++;
+        else if (r.type === 'out') totalCheckouts++;
       });
 
-      const totalCheckins = records.filter((r: any) => r.type === 'in').length;
-      const totalCheckouts = records.filter(
-        (r: any) => r.type === 'out',
-      ).length;
       const daysWorked = daysSet.size;
 
       // Calculate current month working days (excluding weekends)
       const year = now.getFullYear();
       const month = now.getMonth();
-      const daysInMonth = new Date(year, month + 1, 0).getDate();
       let workingDays = 0;
       for (let day = 1; day <= now.getDate(); day++) {
         const date = new Date(year, month, day);
@@ -68,19 +68,20 @@ const DashboardScreen: React.FC = () => {
         workingDays,
       });
 
-      // Load MY device requests
-      try {
-        const reqRes = await api.get('/api/devices/my-requests');
-        const myReqs = reqRes?.data?.success
-          ? reqRes.data.data
-          : reqRes?.data || [];
-        setMyRequests(Array.isArray(myReqs) ? myReqs : []);
-      } catch {
-        setMyRequests([]);
-      }
+      // Load MY device requests (in parallel)
+      const reqPromise = api
+        .get('/api/devices/my-requests')
+        .catch(() => ({ data: [] }));
 
-      // Use my recent records as activity
+      // Use recent records as activity
       setRecentActivity(records.slice(0, 5));
+
+      // Wait for requests to complete
+      const reqRes = await reqPromise;
+      const myReqs = reqRes?.data?.success
+        ? reqRes.data.data
+        : reqRes?.data || [];
+      setMyRequests(Array.isArray(myReqs) ? myReqs : []);
     } catch (e) {
       console.error('Failed to load dashboard:', e);
     } finally {

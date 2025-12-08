@@ -52,7 +52,7 @@ const HomeScreen: React.FC = () => {
       const end = new Date();
       end.setHours(23, 59, 59, 999);
       const res = await api.get('/api/attendance/history', {
-        params: { from: start.toISOString(), to: end.toISOString(), limit: 50 },
+        params: { from: start.toISOString(), to: end.toISOString(), limit: 20 },
       });
       if (res?.data?.success) setRecent(res.data.data || []);
       else if (Array.isArray(res?.data)) setRecent(res.data || []);
@@ -68,16 +68,13 @@ const HomeScreen: React.FC = () => {
   useEffect(() => {
     loadRecent();
     checkPendingRequest();
-    refreshUser(); // Refresh user data on mount
-  }, [loadRecent, refreshUser]);
+  }, [loadRecent]);
 
   useFocusEffect(
     useCallback(() => {
       loadRecent();
-      checkPendingRequest();
-      refreshUser(); // Refresh user data when screen focuses
       return undefined;
-    }, [loadRecent, refreshUser]),
+    }, [loadRecent]),
   );
 
   const showToast = (type: 'success' | 'error' | 'info', message: string) => {
@@ -175,6 +172,40 @@ const HomeScreen: React.FC = () => {
 
   const handleBreak = async (action: 'start' | 'end') => {
     setBreakLoading(true);
+
+    // Optimistically update UI
+    const newOnBreak = action === 'start';
+    setOnBreak(newOnBreak);
+
+    // Update the recent records optimistically
+    if (recent.length > 0) {
+      const asc = getAsc(recent);
+      const lastRecord = asc[asc.length - 1];
+      if (lastRecord.type === 'in') {
+        const updatedRecent = recent.map(r => {
+          if (r._id === lastRecord._id) {
+            const breaks = r.breaks || [];
+            if (action === 'start') {
+              return {
+                ...r,
+                onBreak: true,
+                breaks: [...breaks, { start: new Date().toISOString() }],
+              };
+            } else {
+              const updatedBreaks = [...breaks];
+              if (updatedBreaks.length > 0) {
+                updatedBreaks[updatedBreaks.length - 1].end =
+                  new Date().toISOString();
+              }
+              return { ...r, onBreak: false, breaks: updatedBreaks };
+            }
+          }
+          return r;
+        });
+        setRecent(updatedRecent);
+      }
+    }
+
     try {
       const res = await api.post(`/api/attendance/break/${action}`);
       if (res?.data?.success) {
@@ -182,13 +213,20 @@ const HomeScreen: React.FC = () => {
           'success',
           action === 'start' ? 'Break started' : 'Break ended',
         );
-        await loadRecent();
+        // Reload in background without blocking UI
+        loadRecent();
       } else {
         showToast('error', res?.data?.message || `Failed to ${action} break`);
+        // Revert optimistic update on error
+        setOnBreak(!newOnBreak);
+        loadRecent();
       }
     } catch (err: any) {
       const srvMsg = err?.response?.data?.message || err?.message;
       showToast('error', srvMsg || `Failed to ${action} break`);
+      // Revert optimistic update on error
+      setOnBreak(!newOnBreak);
+      loadRecent();
     } finally {
       setBreakLoading(false);
     }

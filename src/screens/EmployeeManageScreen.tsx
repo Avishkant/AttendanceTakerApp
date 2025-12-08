@@ -30,6 +30,10 @@ const EmployeeManageScreen: React.FC = () => {
   // Admin features: view attendance and add marks
   const [attendance, setAttendance] = useState<any[]>([]);
   const [attLoading, setAttLoading] = useState(false);
+  const [attLoadingMore, setAttLoadingMore] = useState(false);
+  const [attHasMore, setAttHasMore] = useState(true);
+  const [attPage, setAttPage] = useState(1);
+  const ATT_PAGE_SIZE = 50;
   const [fromDate, setFromDate] = useState<string>(
     new Date(new Date().setHours(0, 0, 0, 0)).toISOString(),
   );
@@ -134,24 +138,48 @@ const EmployeeManageScreen: React.FC = () => {
     }
   };
 
-  const loadAttendance = async (from = fromDate, to = toDate) => {
+  const loadAttendance = async (
+    from = fromDate,
+    to = toDate,
+    pageNum: number = 1,
+    append: boolean = false,
+  ) => {
     if (!employeeId) return;
-    setAttLoading(true);
+
+    if (pageNum === 1) {
+      setAttLoading(true);
+    } else {
+      setAttLoadingMore(true);
+    }
+
     try {
       const res = await api.get(
         `/api/admin/employees/${employeeId}/attendance`,
         {
-          params: { from, to, limit: 200 },
+          params: { from, to, limit: ATT_PAGE_SIZE, page: pageNum },
         },
       );
-      if (res?.data?.success) setAttendance(res.data.data || []);
-      else if (Array.isArray(res?.data)) setAttendance(res.data || []);
-      else setAttendance([]);
+
+      let data: any[] = [];
+      if (res?.data?.success) data = res.data.data || [];
+      else if (Array.isArray(res?.data)) data = res.data || [];
+
+      const newAttendance = append ? [...attendance, ...data] : data;
+      setAttendance(newAttendance);
+      setAttHasMore(data.length >= ATT_PAGE_SIZE);
+      setAttPage(pageNum);
     } catch (e) {
       console.error('attendance fetch failed', e);
-      setAttendance([]);
+      if (!append) setAttendance([]);
     } finally {
       setAttLoading(false);
+      setAttLoadingMore(false);
+    }
+  };
+
+  const loadMoreAttendance = () => {
+    if (!attLoadingMore && attHasMore && !attLoading) {
+      loadAttendance(fromDate, toDate, attPage + 1, true);
     }
   };
 
@@ -518,7 +546,11 @@ const EmployeeManageScreen: React.FC = () => {
               </Pressable>
               <Pressable
                 style={styles.rangeBtn}
-                onPress={() => loadAttendance(fromDate, toDate)}
+                onPress={() => {
+                  setAttPage(1);
+                  setAttHasMore(true);
+                  loadAttendance(fromDate, toDate, 1, false);
+                }}
               >
                 <Icon name="chevron-right" size={16} color="#fff" />
               </Pressable>
@@ -531,67 +563,93 @@ const EmployeeManageScreen: React.FC = () => {
           ) : (
             <View style={styles.logList}>
               {attendance && attendance.length > 0 ? (
-                <FlatList
-                  data={attendance}
-                  scrollEnabled={false}
-                  keyExtractor={item => item._id}
-                  renderItem={({ item }) => {
-                    const date = new Date(item.timestamp);
-                    const day = date.getDate();
-                    const month = date.toLocaleDateString('en-US', {
-                      month: 'short',
-                    });
-                    const time = date.toLocaleTimeString('en-US', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    });
-                    const isCheckIn = item.type === 'in';
+                <>
+                  <FlatList
+                    data={attendance}
+                    scrollEnabled={false}
+                    keyExtractor={item => item._id}
+                    renderItem={({ item }) => {
+                      const date = new Date(item.timestamp);
+                      const day = date.getDate();
+                      const month = date.toLocaleDateString('en-US', {
+                        month: 'short',
+                      });
+                      const time = date.toLocaleTimeString('en-US', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      });
+                      const isCheckIn = item.type === 'in';
 
-                    return (
-                      <View style={styles.logItem}>
-                        <View style={styles.logLeft}>
-                          <View style={styles.logDate}>
-                            <Text style={styles.logDay}>{day}</Text>
-                            <Text style={styles.logMonth}>
-                              {month.toUpperCase()}
-                            </Text>
-                          </View>
-                          <View style={styles.logDetails}>
-                            <View style={styles.logTimeRow}>
-                              <View style={styles.logTimeItem}>
-                                <Icon name="log-in" size={12} color="#059669" />
-                                <Text style={styles.logTime}>
-                                  {isCheckIn ? time : '--:--'}
-                                </Text>
-                              </View>
-                              <View style={styles.logTimeItem}>
-                                <Icon
-                                  name="log-out"
-                                  size={12}
-                                  color="#d97706"
-                                />
-                                <Text style={styles.logTime}>
-                                  {!isCheckIn ? time : '--:--'}
-                                </Text>
-                              </View>
+                      return (
+                        <View style={styles.logItem}>
+                          <View style={styles.logLeft}>
+                            <View style={styles.logDate}>
+                              <Text style={styles.logDay}>{day}</Text>
+                              <Text style={styles.logMonth}>
+                                {month.toUpperCase()}
+                              </Text>
                             </View>
-                            <Text style={styles.logDuration}>
-                              Duration: -- hrs
-                            </Text>
+                            <View style={styles.logDetails}>
+                              <View style={styles.logTimeRow}>
+                                <View style={styles.logTimeItem}>
+                                  <Icon
+                                    name="log-in"
+                                    size={12}
+                                    color="#059669"
+                                  />
+                                  <Text style={styles.logTime}>
+                                    {isCheckIn ? time : '--:--'}
+                                  </Text>
+                                </View>
+                                <View style={styles.logTimeItem}>
+                                  <Icon
+                                    name="log-out"
+                                    size={12}
+                                    color="#d97706"
+                                  />
+                                  <Text style={styles.logTime}>
+                                    {!isCheckIn ? time : '--:--'}
+                                  </Text>
+                                </View>
+                              </View>
+                              <Text style={styles.logDuration}>
+                                Duration: -- hrs
+                              </Text>
+                            </View>
                           </View>
+                          <View
+                            style={[
+                              styles.statusDot,
+                              isCheckIn
+                                ? styles.statusDotIn
+                                : styles.statusDotOut,
+                            ]}
+                          />
                         </View>
-                        <View
-                          style={[
-                            styles.statusDot,
-                            isCheckIn
-                              ? styles.statusDotIn
-                              : styles.statusDotOut,
-                          ]}
-                        />
-                      </View>
-                    );
-                  }}
-                />
+                      );
+                    }}
+                    ListFooterComponent={
+                      attLoadingMore ? (
+                        <View style={styles.footerLoader}>
+                          <ActivityIndicator size="small" color="#6366f1" />
+                          <Text style={styles.footerText}>Loading more...</Text>
+                        </View>
+                      ) : attHasMore && attendance.length >= ATT_PAGE_SIZE ? (
+                        <Pressable
+                          style={styles.loadMoreBtn}
+                          onPress={loadMoreAttendance}
+                        >
+                          <Text style={styles.loadMoreText}>Load More</Text>
+                          <Icon name="chevron-down" size={16} color="#6366f1" />
+                        </Pressable>
+                      ) : attendance.length > 0 ? (
+                        <View style={styles.footerLoader}>
+                          <Text style={styles.footerText}>No more records</Text>
+                        </View>
+                      ) : null
+                    }
+                  />
+                </>
               ) : (
                 <Text style={styles.noLogs}>
                   No logs found for this period.
@@ -1393,6 +1451,29 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
     marginLeft: 6,
+  },
+  footerLoader: {
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  footerText: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  loadMoreBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    gap: 6,
+  },
+  loadMoreText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6366f1',
   },
 });
 
