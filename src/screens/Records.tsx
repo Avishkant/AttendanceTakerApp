@@ -44,7 +44,14 @@ type MergedAttendanceRecord = {
   ips: string[];
 };
 
-type DateFilter = 'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom';
+type DateFilter =
+  | 'all'
+  | 'today'
+  | 'yesterday'
+  | 'week'
+  | 'month'
+  | 'lastMonth'
+  | 'custom';
 
 const Records: React.FC = () => {
   const navigation = useNavigation();
@@ -172,6 +179,19 @@ const Records: React.FC = () => {
         filtered = filtered.filter(record => {
           const recordDate = new Date(record.timestamp);
           return recordDate >= monthAgo;
+        });
+        break;
+      case 'lastMonth':
+        const lastMonthStart = new Date(
+          today.getFullYear(),
+          today.getMonth() - 1,
+          1,
+        );
+        const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+        lastMonthEnd.setHours(23, 59, 59, 999);
+        filtered = filtered.filter(record => {
+          const recordDate = new Date(record.timestamp);
+          return recordDate >= lastMonthStart && recordDate <= lastMonthEnd;
         });
         break;
       case 'custom':
@@ -327,6 +347,8 @@ const Records: React.FC = () => {
         return 'Last 7 Days';
       case 'month':
         return 'Last 30 Days';
+      case 'lastMonth':
+        return 'Last Month';
       case 'custom':
         return 'Custom Range';
       default:
@@ -554,7 +576,14 @@ const Records: React.FC = () => {
             </View>
             <ScrollView style={styles.filterOptions}>
               {(
-                ['all', 'today', 'yesterday', 'week', 'month'] as DateFilter[]
+                [
+                  'all',
+                  'today',
+                  'yesterday',
+                  'week',
+                  'month',
+                  'lastMonth',
+                ] as DateFilter[]
               ).map(filter => (
                 <Pressable
                   key={filter}
@@ -587,7 +616,11 @@ const Records: React.FC = () => {
                         ? 'Yesterday'
                         : filter === 'week'
                         ? 'Last 7 Days'
-                        : 'Last 30 Days'}
+                        : filter === 'month'
+                        ? 'Last 30 Days'
+                        : filter === 'lastMonth'
+                        ? 'Last Month'
+                        : 'Custom Range'}
                     </Text>
                   </View>
                   {dateFilter === filter && (

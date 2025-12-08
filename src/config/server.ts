@@ -6,7 +6,7 @@ import { Platform } from 'react-native';
 //    (Android emulator uses `10.0.2.2`, iOS simulator uses `localhost`).
 // 3) Otherwise fall back to the hosted backend.
 const HOSTED = 'https://attendancetakerbackend.onrender.com';
-const LOCAL_PORT = 3000; // change if your local backend uses a different port
+const LOCAL_PORT = 4000; // change if your local backend uses a different port
 const LOCAL_ANDROID = `http://10.0.2.2:${LOCAL_PORT}`;
 const LOCAL_IOS = `http://localhost:${LOCAL_PORT}`;
 
@@ -17,10 +17,7 @@ const FORCE_HOSTED = !!(
   process.env &&
   (process.env.FORCE_HOSTED === '1' || process.env.FORCE_HOSTED === 'true')
 );
-const USE_LOCAL = !!(
-  process.env &&
-  (process.env.USE_LOCAL === '1' || process.env.USE_LOCAL === 'true')
-);
+const USE_LOCAL = false; // Set to true to use local server in development
 
 // Resolution order:
 // 1) explicit `process.env.BASE_URL`

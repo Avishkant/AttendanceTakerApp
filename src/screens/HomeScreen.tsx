@@ -19,12 +19,20 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Toast from 'react-native-toast-message';
 
-type RecordItem = { _id: string; type: 'in' | 'out'; timestamp: string };
+type RecordItem = {
+  _id: string;
+  type: 'in' | 'out';
+  timestamp: string;
+  onBreak?: boolean;
+  breaks?: Array<{ start: string; end?: string }>;
+};
 
 const HomeScreen: React.FC = () => {
   const { user, signOut, refreshUser } = useAuth();
   const navigation = useNavigation<any>();
   const [marking, setMarking] = useState<'in' | 'out' | null>(null);
+  const [onBreak, setOnBreak] = useState(false);
+  const [breakLoading, setBreakLoading] = useState(false);
   const [recent, setRecent] = useState<RecordItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [recentError, setRecentError] = useState<string | null>(null);
@@ -165,6 +173,27 @@ const HomeScreen: React.FC = () => {
     }
   };
 
+  const handleBreak = async (action: 'start' | 'end') => {
+    setBreakLoading(true);
+    try {
+      const res = await api.post(`/api/attendance/break/${action}`);
+      if (res?.data?.success) {
+        showToast(
+          'success',
+          action === 'start' ? 'Break started' : 'Break ended',
+        );
+        await loadRecent();
+      } else {
+        showToast('error', res?.data?.message || `Failed to ${action} break`);
+      }
+    } catch (err: any) {
+      const srvMsg = err?.response?.data?.message || err?.message;
+      showToast('error', srvMsg || `Failed to ${action} break`);
+    } finally {
+      setBreakLoading(false);
+    }
+  };
+
   // helpers to compute work & break durations from today's records
   const getAsc = (records: RecordItem[]) =>
     [...(records || [])].sort(
@@ -207,9 +236,19 @@ const HomeScreen: React.FC = () => {
         }
       }
     }
-    // currently checked in -> add running time
+    // currently checked in -> add running time (excluding current break if on break)
     if (currentIn !== null) {
-      worked += Date.now() - currentIn;
+      let currentTime = Date.now() - currentIn;
+      // Subtract current break time if on break
+      const lastRecord = asc[asc.length - 1];
+      if (lastRecord?.onBreak && lastRecord?.breaks) {
+        const lastBreak = lastRecord.breaks[lastRecord.breaks.length - 1];
+        if (lastBreak && !lastBreak.end) {
+          const breakStart = new Date(lastBreak.start).getTime();
+          currentTime -= Date.now() - breakStart;
+        }
+      }
+      worked += currentTime;
     }
     return worked;
   };
@@ -217,6 +256,23 @@ const HomeScreen: React.FC = () => {
   const totalBreakMs = (records: RecordItem[] | null) => {
     const asc = getAsc(records || []);
     let breakMs = 0;
+    // Add breaks within check-ins
+    for (const r of asc) {
+      if (r.type === 'in' && r.breaks) {
+        for (const brk of r.breaks) {
+          if (brk.end) {
+            breakMs += Math.max(
+              0,
+              new Date(brk.end).getTime() - new Date(brk.start).getTime(),
+            );
+          } else {
+            // Current active break
+            breakMs += Math.max(0, Date.now() - new Date(brk.start).getTime());
+          }
+        }
+      }
+    }
+    // Add time between check-outs and check-ins (lunch breaks, etc.)
     for (let i = 0; i < asc.length - 1; i++) {
       const cur = asc[i];
       const nxt = asc[i + 1];
@@ -247,6 +303,22 @@ const HomeScreen: React.FC = () => {
 
   // keep a ticking state to re-render running timer while checked in
   const [, setTick] = useState(0);
+  
+  // Update break state when records change
+  useEffect(() => {
+    const asc = getAsc(recent || []);
+    if (asc.length > 0) {
+      const last = asc[asc.length - 1];
+      if (last.type === 'in') {
+        setOnBreak(last.onBreak || false);
+      } else {
+        setOnBreak(false);
+      }
+    } else {
+      setOnBreak(false);
+    }
+  }, [recent]);
+  
   useEffect(() => {
     let id: any = null;
     if (isCheckedIn(recent)) {
@@ -312,20 +384,42 @@ const HomeScreen: React.FC = () => {
           {/* Action Buttons */}
           <View style={styles.actionContainer}>
             {isCheckedIn(recent) ? (
-              <TouchableOpacity
-                style={styles.checkOutBtn}
-                onPress={() => mark('out')}
-                disabled={marking !== null}
-              >
-                {marking === 'out' ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <>
-                    <Icon name="log-out" size={20} color="#fff" />
-                    <Text style={styles.actionBtnText}>Check Out</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity
+                  style={[styles.breakBtn, onBreak && styles.breakBtnActive]}
+                  onPress={() => handleBreak(onBreak ? 'end' : 'start')}
+                  disabled={breakLoading || marking !== null}
+                >
+                  {breakLoading ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <>
+                      <Icon
+                        name={onBreak ? 'play' : 'pause'}
+                        size={20}
+                        color="#fff"
+                      />
+                      <Text style={styles.actionBtnText}>
+                        {onBreak ? 'End Break' : 'Start Break'}
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.checkOutBtn}
+                  onPress={() => mark('out')}
+                  disabled={marking !== null || onBreak}
+                >
+                  {marking === 'out' ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <>
+                      <Icon name="log-out" size={20} color="#fff" />
+                      <Text style={styles.actionBtnText}>Check Out</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </>
             ) : (
               <TouchableOpacity
                 style={styles.checkInBtn}
@@ -600,6 +694,8 @@ const styles = StyleSheet.create({
 
   actionContainer: {
     marginBottom: 20,
+    flexDirection: 'row',
+    gap: 12,
   },
   checkInBtn: {
     backgroundColor: '#10b981',
@@ -614,6 +710,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 4,
+    flex: 1,
   },
   checkOutBtn: {
     backgroundColor: '#ef4444',
@@ -628,6 +725,26 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 4,
+    flex: 1,
+  },
+  breakBtn: {
+    backgroundColor: '#f59e0b',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 16,
+    gap: 8,
+    shadowColor: '#f59e0b',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+    flex: 1,
+  },
+  breakBtnActive: {
+    backgroundColor: '#10b981',
+    shadowColor: '#10b981',
   },
   actionBtnText: {
     color: '#fff',

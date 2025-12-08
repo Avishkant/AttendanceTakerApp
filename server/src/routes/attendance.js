@@ -67,4 +67,94 @@ router.get("/history", auth, async (req, res) => {
   }
 });
 
+// POST /api/attendance/break/start
+router.post("/break/start", auth, verifyDeviceAndIp, async (req, res) => {
+  try {
+    const user = req.user;
+    // Find the most recent check-in
+    const lastCheckIn = await Attendance.findOne({
+      user: user._id,
+      type: "in",
+    }).sort({ timestamp: -1 });
+
+    if (!lastCheckIn) {
+      return res.status(422).json({
+        success: false,
+        message: "You must be checked in to start a break.",
+      });
+    }
+
+    // Check if there's a checkout after this check-in
+    const checkOutAfter = await Attendance.findOne({
+      user: user._id,
+      type: "out",
+      timestamp: { $gt: lastCheckIn.timestamp },
+    });
+
+    if (checkOutAfter) {
+      return res.status(422).json({
+        success: false,
+        message: "You must be checked in to start a break.",
+      });
+    }
+
+    // Check if already on break
+    if (lastCheckIn.onBreak) {
+      return res.status(422).json({
+        success: false,
+        message: "You are already on a break.",
+      });
+    }
+
+    // Start break
+    lastCheckIn.breaks.push({ start: new Date() });
+    lastCheckIn.onBreak = true;
+    await lastCheckIn.save();
+
+    return res.json({ success: true, data: lastCheckIn });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/attendance/break/end
+router.post("/break/end", auth, verifyDeviceAndIp, async (req, res) => {
+  try {
+    const user = req.user;
+    // Find the most recent check-in with an active break
+    const lastCheckIn = await Attendance.findOne({
+      user: user._id,
+      type: "in",
+      onBreak: true,
+    }).sort({ timestamp: -1 });
+
+    if (!lastCheckIn) {
+      return res.status(422).json({
+        success: false,
+        message: "You are not currently on a break.",
+      });
+    }
+
+    // Find the last break without an end time
+    const lastBreak = lastCheckIn.breaks[lastCheckIn.breaks.length - 1];
+    if (!lastBreak || lastBreak.end) {
+      return res.status(422).json({
+        success: false,
+        message: "No active break found.",
+      });
+    }
+
+    // End break
+    lastBreak.end = new Date();
+    lastCheckIn.onBreak = false;
+    await lastCheckIn.save();
+
+    return res.json({ success: true, data: lastCheckIn });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 module.exports = router;

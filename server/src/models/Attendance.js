@@ -12,6 +12,13 @@ const AttendanceSchema = new mongoose.Schema({
     default: "recorded",
   },
   note: { type: String },
+  breaks: [
+    {
+      start: { type: Date, required: true },
+      end: { type: Date },
+    },
+  ],
+  onBreak: { type: Boolean, default: false },
 });
 
 module.exports = mongoose.model("Attendance", AttendanceSchema);
