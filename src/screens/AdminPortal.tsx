@@ -10,6 +10,7 @@ import EmployeeManageScreen from './EmployeeManageScreen';
 import IPRestrictionsScreen from './IPRestrictionsScreen';
 import Records from './Records';
 import GoogleSheetsScreen from './GoogleSheetsScreen';
+import AnalyticsScreen from './AnalyticsScreen';
 import { useAuth } from '../contexts/AuthContext';
 import BottomNav from '../components/BottomNav';
 
@@ -84,6 +85,11 @@ const AdminPortal: React.FC = () => {
         name="GoogleSheets"
         component={GoogleSheetsScreen}
         options={{ headerShown: true, title: 'Google Sheets' }}
+      />
+      <Stack.Screen
+        name="Analytics"
+        component={AnalyticsScreen}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );

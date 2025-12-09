@@ -43,7 +43,15 @@ const Stack = createNativeStackNavigator();
 
 function Root() {
   const { user, loading } = useAuth();
-  if (loading) return null;
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={styles.loadingText}>Attendance Taker</Text>
+        <Text style={styles.loadingSubtext}>Loading...</Text>
+      </View>
+    );
+  }
 
   return (
     <NavigationContainer>
@@ -74,6 +82,24 @@ function MainApp() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#6366f1',
+  },
+  loadingText: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: 12,
+    letterSpacing: -0.5,
+  },
+  loadingSubtext: {
+    fontSize: 14,
+    color: '#fff',
+    opacity: 0.8,
   },
 });
 

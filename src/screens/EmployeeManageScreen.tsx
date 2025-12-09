@@ -57,6 +57,9 @@ const EmployeeManageScreen: React.FC = () => {
     'mark' | 'from' | 'to' | null
   >(null);
   const [pickerDate, setPickerDate] = useState<Date>(new Date());
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [selectedHour, setSelectedHour] = useState(new Date().getHours());
+  const [selectedMinute, setSelectedMinute] = useState(new Date().getMinutes());
 
   const load = async () => {
     setLoading(true);
@@ -451,27 +454,23 @@ const EmployeeManageScreen: React.FC = () => {
             </View>
             <View style={styles.gridItem}>
               <Text style={styles.inputLabel}>Select Time</Text>
-              <TextInput
-                value={new Date(markTimestamp).toLocaleTimeString('en-GB', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-                onChangeText={text => {
-                  // Simple time parser HH:MM
-                  const match = text.match(/^(\d{1,2}):(\d{2})$/);
-                  if (match) {
-                    const date = new Date(markTimestamp);
-                    date.setHours(
-                      parseInt(match[1], 10),
-                      parseInt(match[2], 10),
-                    );
-                    setMarkTimestamp(date.toISOString());
-                  }
+              <Pressable
+                style={styles.timeInputContainer}
+                onPress={() => {
+                  const date = new Date(markTimestamp);
+                  setSelectedHour(date.getHours());
+                  setSelectedMinute(date.getMinutes());
+                  setShowTimePicker(true);
                 }}
-                placeholder="--:--"
-                style={styles.input}
-                placeholderTextColor="#94a3b8"
-              />
+              >
+                <Icon name="clock" size={18} color="#6366f1" />
+                <Text style={styles.timeInputText}>
+                  {new Date(markTimestamp).toLocaleTimeString('en-GB', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </Text>
+              </Pressable>
             </View>
           </View>
           <View style={styles.grid2}>
@@ -500,50 +499,69 @@ const EmployeeManageScreen: React.FC = () => {
 
         {/* Attendance Log Card */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Attendance Log</Text>
+          <View style={styles.logHeaderSection}>
+            <View>
+              <Text style={styles.cardTitle}>Attendance History</Text>
+              <Text style={styles.cardSubtitle}>
+                View and filter attendance records
+              </Text>
+            </View>
+          </View>
 
           {/* Filter Range */}
           <View style={styles.filterRange}>
             <View style={styles.filterHeader}>
-              <Icon name="search" size={14} color="#94a3b8" />
-              <Text style={styles.filterTitle}>FILTER RANGE</Text>
+              <Icon name="filter" size={16} color="#6366f1" />
+              <Text style={styles.filterTitle}>Filter by Date Range</Text>
             </View>
             <View style={styles.filterInputs}>
-              <Pressable
-                style={styles.rangeInputContainer}
-                onPress={() => {
-                  setPickerTarget('from');
-                  setPickerDate(new Date(fromDate));
-                  setShowPicker(true);
-                }}
-              >
-                <Text style={styles.rangeInputText}>
-                  {new Date(fromDate).toLocaleDateString('en-GB', {
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: 'numeric',
-                  })}
-                </Text>
-                <Icon name="calendar" size={14} color="#64748b" />
-              </Pressable>
-              <Text style={styles.rangeSeparator}>-</Text>
-              <Pressable
-                style={styles.rangeInputContainer}
-                onPress={() => {
-                  setPickerTarget('to');
-                  setPickerDate(new Date(toDate));
-                  setShowPicker(true);
-                }}
-              >
-                <Text style={styles.rangeInputText}>
-                  {new Date(toDate).toLocaleDateString('en-GB', {
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: 'numeric',
-                  })}
-                </Text>
-                <Icon name="calendar" size={14} color="#64748b" />
-              </Pressable>
+              <View style={styles.dateRangeWrapper}>
+                <Pressable
+                  style={styles.rangeInputContainer}
+                  onPress={() => {
+                    setPickerTarget('from');
+                    setPickerDate(new Date(fromDate));
+                    setShowPicker(true);
+                  }}
+                >
+                  <View style={styles.rangeInputContent}>
+                    <Text style={styles.rangeInputLabel}>From</Text>
+                    <Text style={styles.rangeInputText}>
+                      {new Date(fromDate).toLocaleDateString('en-GB', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                    </Text>
+                  </View>
+                  <Icon name="calendar" size={16} color="#6366f1" />
+                </Pressable>
+                <View style={styles.rangeSeparatorWrapper}>
+                  <View style={styles.rangeSeparatorLine} />
+                  <Icon name="arrow-right" size={14} color="#cbd5e1" />
+                  <View style={styles.rangeSeparatorLine} />
+                </View>
+                <Pressable
+                  style={styles.rangeInputContainer}
+                  onPress={() => {
+                    setPickerTarget('to');
+                    setPickerDate(new Date(toDate));
+                    setShowPicker(true);
+                  }}
+                >
+                  <View style={styles.rangeInputContent}>
+                    <Text style={styles.rangeInputLabel}>To</Text>
+                    <Text style={styles.rangeInputText}>
+                      {new Date(toDate).toLocaleDateString('en-GB', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                    </Text>
+                  </View>
+                  <Icon name="calendar" size={16} color="#6366f1" />
+                </Pressable>
+              </View>
               <Pressable
                 style={styles.rangeBtn}
                 onPress={() => {
@@ -552,7 +570,8 @@ const EmployeeManageScreen: React.FC = () => {
                   loadAttendance(fromDate, toDate, 1, false);
                 }}
               >
-                <Icon name="chevron-right" size={16} color="#fff" />
+                <Text style={styles.rangeBtnText}>Apply</Text>
+                <Icon name="check" size={16} color="#fff" />
               </Pressable>
             </View>
           </View>
@@ -590,41 +609,65 @@ const EmployeeManageScreen: React.FC = () => {
                               </Text>
                             </View>
                             <View style={styles.logDetails}>
-                              <View style={styles.logTimeRow}>
-                                <View style={styles.logTimeItem}>
+                              <View style={styles.logHeader}>
+                                <View
+                                  style={[
+                                    styles.logTypeBadge,
+                                    isCheckIn
+                                      ? styles.logTypeBadgeIn
+                                      : styles.logTypeBadgeOut,
+                                  ]}
+                                >
                                   <Icon
-                                    name="log-in"
+                                    name={isCheckIn ? 'log-in' : 'log-out'}
                                     size={12}
-                                    color="#059669"
+                                    color={isCheckIn ? '#059669' : '#d97706'}
                                   />
-                                  <Text style={styles.logTime}>
-                                    {isCheckIn ? time : '--:--'}
+                                  <Text
+                                    style={[
+                                      styles.logTypeBadgeText,
+                                      isCheckIn
+                                        ? styles.logTypeBadgeTextIn
+                                        : styles.logTypeBadgeTextOut,
+                                    ]}
+                                  >
+                                    {isCheckIn ? 'Check In' : 'Check Out'}
                                   </Text>
                                 </View>
-                                <View style={styles.logTimeItem}>
-                                  <Icon
-                                    name="log-out"
-                                    size={12}
-                                    color="#d97706"
-                                  />
-                                  <Text style={styles.logTime}>
-                                    {!isCheckIn ? time : '--:--'}
-                                  </Text>
-                                </View>
+                                <Text style={styles.logTimeMain}>{time}</Text>
                               </View>
-                              <Text style={styles.logDuration}>
-                                Duration: -- hrs
+                              <Text style={styles.logFullDate}>
+                                {date.toLocaleDateString('en-US', {
+                                  weekday: 'long',
+                                  year: 'numeric',
+                                  month: 'long',
+                                  day: 'numeric',
+                                })}
                               </Text>
+                              {item.note && (
+                                <View style={styles.logNoteContainer}>
+                                  <Icon name="info" size={11} color="#94a3b8" />
+                                  <Text style={styles.logNote}>
+                                    {item.note}
+                                  </Text>
+                                </View>
+                              )}
                             </View>
                           </View>
                           <View
                             style={[
-                              styles.statusDot,
+                              styles.statusIndicator,
                               isCheckIn
-                                ? styles.statusDotIn
-                                : styles.statusDotOut,
+                                ? styles.statusIndicatorIn
+                                : styles.statusIndicatorOut,
                             ]}
-                          />
+                          >
+                            <Icon
+                              name={isCheckIn ? 'arrow-down' : 'arrow-up'}
+                              size={14}
+                              color="#fff"
+                            />
+                          </View>
                         </View>
                       );
                     }}
@@ -659,6 +702,114 @@ const EmployeeManageScreen: React.FC = () => {
           )}
         </View>
       </ScrollView>
+
+      {/* Time Picker Modal */}
+      {showTimePicker && (
+        <View style={styles.modalOverlay}>
+          <Pressable
+            style={styles.timePickerBackdrop}
+            onPress={() => setShowTimePicker(false)}
+          />
+          <View style={styles.timePickerModal}>
+            <View style={styles.timePickerHeader}>
+              <Pressable onPress={() => setShowTimePicker(false)}>
+                <Text style={styles.timePickerCancel}>Cancel</Text>
+              </Pressable>
+              <Text style={styles.timePickerTitle}>Select Time</Text>
+              <Pressable
+                onPress={() => {
+                  const date = new Date(markTimestamp);
+                  date.setHours(selectedHour, selectedMinute, 0, 0);
+                  setMarkTimestamp(date.toISOString());
+                  setShowTimePicker(false);
+                }}
+              >
+                <Text style={styles.timePickerDone}>Done</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.timePickerContainer}>
+              <View style={styles.timeDisplay}>
+                <View style={styles.timeDisplayBox}>
+                  <Text style={styles.timeDisplayText}>
+                    {String(selectedHour).padStart(2, '0')}
+                  </Text>
+                </View>
+                <Text style={styles.timeDisplaySeparator}>:</Text>
+                <View style={styles.timeDisplayBox}>
+                  <Text style={styles.timeDisplayText}>
+                    {String(selectedMinute).padStart(2, '0')}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.timePickerControls}>
+                <View style={styles.timePickerColumn}>
+                  <Text style={styles.timePickerLabel}>Hour</Text>
+                  <ScrollView
+                    style={styles.timePickerScroll}
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {Array.from({ length: 24 }, (_, i) => i).map(hour => (
+                      <Pressable
+                        key={hour}
+                        style={[
+                          styles.timePickerItem,
+                          selectedHour === hour &&
+                            styles.timePickerItemSelected,
+                        ]}
+                        onPress={() => setSelectedHour(hour)}
+                      >
+                        <Text
+                          style={[
+                            styles.timePickerItemText,
+                            selectedHour === hour &&
+                              styles.timePickerItemTextSelected,
+                          ]}
+                        >
+                          {String(hour).padStart(2, '0')}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+
+                <View style={styles.timePickerDivider} />
+
+                <View style={styles.timePickerColumn}>
+                  <Text style={styles.timePickerLabel}>Minute</Text>
+                  <ScrollView
+                    style={styles.timePickerScroll}
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {Array.from({ length: 60 }, (_, i) => i).map(minute => (
+                      <Pressable
+                        key={minute}
+                        style={[
+                          styles.timePickerItem,
+                          selectedMinute === minute &&
+                            styles.timePickerItemSelected,
+                        ]}
+                        onPress={() => setSelectedMinute(minute)}
+                      >
+                        <Text
+                          style={[
+                            styles.timePickerItemText,
+                            selectedMinute === minute &&
+                              styles.timePickerItemTextSelected,
+                          ]}
+                        >
+                          {String(minute).padStart(2, '0')}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+      )}
 
       {/* Date Picker Modal */}
       {showPicker && (
@@ -1108,6 +1259,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#1e293b',
   },
+  timeInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  timeInputText: {
+    fontSize: 13,
+    color: '#1e293b',
+    fontWeight: '600',
+  },
   markBtn: {
     flex: 1,
     flexDirection: 'row',
@@ -1138,31 +1305,41 @@ const styles = StyleSheet.create({
     color: '#d97706',
     marginLeft: 6,
   },
+  logHeaderSection: {
+    marginBottom: 16,
+  },
+  cardSubtitle: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginTop: 4,
+  },
   filterRange: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
-    padding: 12,
+    borderColor: '#e2e8f0',
+    padding: 16,
     marginTop: 12,
   },
   filterHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 10,
+    gap: 8,
+    marginBottom: 16,
   },
   filterTitle: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '700',
-    color: '#64748b',
-    letterSpacing: 0.5,
-    marginLeft: 4,
+    color: '#1e293b',
   },
   filterInputs: {
+    gap: 12,
+  },
+  dateRangeWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
+    marginBottom: 12,
   },
   rangeInput: {
     flex: 1,
@@ -1182,22 +1359,48 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    backgroundColor: '#f8fafc',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 6,
+    backgroundColor: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  rangeInputContent: {
+    flex: 1,
+  },
+  rangeInputLabel: {
+    fontSize: 10,
+    color: '#94a3b8',
+    marginBottom: 2,
+    fontWeight: '600',
   },
   rangeInputText: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#1e293b',
+    fontWeight: '600',
   },
-  rangeSeparator: {
-    color: '#cbd5e1',
+  rangeSeparatorWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  rangeSeparatorLine: {
+    width: 8,
+    height: 1,
+    backgroundColor: '#cbd5e1',
   },
   rangeBtn: {
-    backgroundColor: '#1e293b',
-    padding: 6,
-    borderRadius: 6,
+    backgroundColor: '#6366f1',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  rangeBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#fff',
   },
   loader: {
     marginVertical: 16,
@@ -1210,67 +1413,108 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: '#e2e8f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   logLeft: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    alignItems: 'flex-start',
+    gap: 14,
     flex: 1,
   },
   logDate: {
-    width: 48,
-    height: 48,
-    borderRadius: 8,
+    width: 52,
+    height: 52,
+    borderRadius: 10,
     backgroundColor: '#eef2ff',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#ddd6fe',
   },
   logDay: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '800',
     color: '#6366f1',
   },
   logMonth: {
     fontSize: 9,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#6366f1',
+    letterSpacing: 0.5,
   },
   logDetails: {
     flex: 1,
+    gap: 6,
   },
-  logTimeRow: {
+  logHeader: {
     flexDirection: 'row',
-    gap: 16,
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  logTimeItem: {
+  logTypeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
-  logTime: {
-    fontSize: 12,
+  logTypeBadgeIn: {
+    backgroundColor: '#ecfdf5',
+  },
+  logTypeBadgeOut: {
+    backgroundColor: '#fef3c7',
+  },
+  logTypeBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  logTypeBadgeTextIn: {
+    color: '#059669',
+  },
+  logTypeBadgeTextOut: {
+    color: '#d97706',
+  },
+  logTimeMain: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#1e293b',
+  },
+  logFullDate: {
+    fontSize: 11,
     color: '#64748b',
-    marginLeft: 4,
   },
-  logDuration: {
+  logNoteContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  logNote: {
     fontSize: 10,
     color: '#94a3b8',
-    marginTop: 4,
+    fontStyle: 'italic',
   },
-  statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+  statusIndicator: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  statusDotIn: {
+  statusIndicatorIn: {
     backgroundColor: '#10b981',
   },
-  statusDotOut: {
+  statusIndicatorOut: {
     backgroundColor: '#f59e0b',
   },
   noLogs: {
@@ -1474,6 +1718,121 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#6366f1',
+  },
+  timePickerBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  timePickerModal: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    marginHorizontal: 20,
+    maxWidth: 400,
+    alignSelf: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  timePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  timePickerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+  timePickerCancel: {
+    fontSize: 14,
+    color: '#64748b',
+  },
+  timePickerDone: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#6366f1',
+  },
+  timePickerContainer: {
+    padding: 20,
+  },
+  timeDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    marginBottom: 24,
+    paddingVertical: 20,
+    backgroundColor: '#f8fafc',
+    borderRadius: 16,
+  },
+  timeDisplayBox: {
+    backgroundColor: '#6366f1',
+    borderRadius: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    minWidth: 70,
+    alignItems: 'center',
+  },
+  timeDisplayText: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  timeDisplaySeparator: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#6366f1',
+  },
+  timePickerControls: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  timePickerColumn: {
+    flex: 1,
+  },
+  timePickerLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  timePickerScroll: {
+    height: 200,
+    borderRadius: 12,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  timePickerItem: {
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  timePickerItemSelected: {
+    backgroundColor: '#eef2ff',
+  },
+  timePickerItemText: {
+    fontSize: 16,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  timePickerItemTextSelected: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#6366f1',
+  },
+  timePickerDivider: {
+    width: 1,
+    backgroundColor: '#e2e8f0',
   },
 });
 

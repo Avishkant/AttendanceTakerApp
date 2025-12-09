@@ -11,6 +11,7 @@ import {
   Pressable,
   Image,
   ScrollView,
+  RefreshControl,
 } from 'react-native';
 import api from '../api/client';
 import { useNavigation } from '@react-navigation/native';
@@ -18,7 +19,9 @@ import Icon from '../components/Icon';
 
 const EmployeesScreen: React.FC = () => {
   const [query, setQuery] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [searchVisible, setSearchVisible] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [employees, setEmployees] = useState<any[]>([]);
   const navigation = useNavigation();
   const [creating, setCreating] = useState(false);
@@ -71,6 +74,22 @@ const EmployeesScreen: React.FC = () => {
     load();
   }, []);
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await load(query);
+    setRefreshing(false);
+  };
+
+  const handleSearch = () => {
+    load(query);
+  };
+
+  const clearSearch = () => {
+    setQuery('');
+    setSearchVisible(false);
+    load('');
+  };
+
   const resetForm = () => {
     setName('');
     setEmail('');
@@ -94,60 +113,135 @@ const EmployeesScreen: React.FC = () => {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Employees</Text>
-        <Pressable style={styles.searchBtn} onPress={() => {}}>
-          <Icon name="search" size={20} color="#64748b" />
-        </Pressable>
+        <View style={styles.headerRight}>
+          <Pressable
+            style={[styles.searchBtn, searchVisible && styles.searchBtnActive]}
+            onPress={() => setSearchVisible(!searchVisible)}
+          >
+            <Icon
+              name={searchVisible ? 'x' : 'search'}
+              size={20}
+              color={searchVisible ? '#6366f1' : '#64748b'}
+            />
+          </Pressable>
+          <Pressable style={styles.addBtn} onPress={() => setCreating(true)}>
+            <Icon name="plus" size={20} color="#fff" />
+            <Text style={styles.addBtnText}>Add</Text>
+          </Pressable>
+        </View>
       </View>
 
-      {/* Employee List */}
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {loading && <ActivityIndicator style={styles.loader} />}
+      {/* Search Bar */}
+      {searchVisible && (
+        <View style={styles.searchContainer}>
+          <View style={styles.searchInputWrapper}>
+            <Icon name="search" size={18} color="#94a3b8" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search employees by name or email..."
+              placeholderTextColor="#94a3b8"
+              value={query}
+              onChangeText={setQuery}
+              onSubmitEditing={handleSearch}
+              autoFocus
+              returnKeyType="search"
+            />
+            {query.length > 0 && (
+              <Pressable onPress={clearSearch} style={styles.clearBtn}>
+                <Icon name="x" size={16} color="#94a3b8" />
+              </Pressable>
+            )}
+          </View>
+          <Pressable style={styles.searchButton} onPress={handleSearch}>
+            <Text style={styles.searchButtonText}>Go</Text>
+          </Pressable>
+        </View>
+      )}
 
-        {employees.map(item => (
-          <View key={item._id} style={styles.employeeCard}>
+      {/* Employee List */}
+      <FlatList
+        data={employees}
+        keyExtractor={item => item._id || item.id}
+        renderItem={({ item }) => (
+          <View style={styles.employeeCard}>
             <View style={styles.employeeRow}>
-              {item.avatar ? (
-                <Image source={{ uri: item.avatar }} style={styles.avatar} />
-              ) : (
-                <View style={styles.avatarPlaceholder}>
-                  <Text style={styles.avatarText}>
-                    {item.name?.charAt(0)?.toUpperCase() || 'E'}
-                  </Text>
-                </View>
-              )}
+              <View style={styles.avatarContainer}>
+                {item.avatar ? (
+                  <Image source={{ uri: item.avatar }} style={styles.avatar} />
+                ) : (
+                  <View style={styles.avatarPlaceholder}>
+                    <Text style={styles.avatarText}>
+                      {item.name?.charAt(0)?.toUpperCase() || 'E'}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.onlineIndicator} />
+              </View>
               <View style={styles.employeeInfo}>
                 <Text style={styles.employeeName}>{item.name}</Text>
                 <Text style={styles.employeeRole}>
-                  {item.role || 'Employee'}
+                  {item.role?.charAt(0).toUpperCase() + item.role?.slice(1) ||
+                    'Employee'}
                 </Text>
+                {item.email && (
+                  <Text style={styles.employeeEmail} numberOfLines={1}>
+                    {item.email}
+                  </Text>
+                )}
               </View>
               <Pressable
                 style={styles.manageBtn}
                 onPress={() =>
                   navigation.navigate('EmployeeManage' as any, {
-                    employeeId: item._id,
+                    employeeId: item._id || item.id,
                   })
                 }
               >
-                <Text style={styles.manageBtnText}>Manage</Text>
-                <Icon name="chevron-right" size={16} color="#64748b" />
+                <Icon name="chevron-right" size={20} color="#6366f1" />
               </Pressable>
             </View>
           </View>
-        ))}
-
-        {!loading && employees.length === 0 && (
-          <View style={styles.emptyState}>
-            <Icon name="users" size={48} color="#cbd5e1" />
-            <Text style={styles.emptyText}>No employees found</Text>
-          </View>
         )}
-
-        <View style={styles.bottomSpacer} />
-      </ScrollView>
+        ListHeaderComponent={
+          loading && employees.length === 0 ? (
+            <ActivityIndicator
+              style={styles.loader}
+              size="large"
+              color="#6366f1"
+            />
+          ) : null
+        }
+        ListEmptyComponent={
+          !loading ? (
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIconContainer}>
+                <Icon name="users" size={56} color="#cbd5e1" />
+              </View>
+              <Text style={styles.emptyTitle}>
+                {query ? 'No results found' : 'No employees yet'}
+              </Text>
+              <Text style={styles.emptySubtitle}>
+                {query
+                  ? 'Try adjusting your search'
+                  : 'Add your first employee to get started'}
+              </Text>
+            </View>
+          ) : null
+        }
+        contentContainerStyle={[
+          styles.listContainer,
+          employees.length === 0 && styles.emptyContainer,
+        ]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={['#6366f1']}
+            tintColor="#6366f1"
+          />
+        }
+      />
 
       {/* Create Modal */}
       <Modal
@@ -203,7 +297,7 @@ const EmployeesScreen: React.FC = () => {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Password (optional)</Text>
+              <Text style={styles.inputLabel}>Password </Text>
               <TextInput
                 placeholder="Minimum 6 characters"
                 value={password}
@@ -263,8 +357,80 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#0f172a',
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   searchBtn: {
-    padding: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  searchBtnActive: {
+    backgroundColor: '#eef2ff',
+    borderColor: '#c7d2fe',
+  },
+  addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#6366f1',
+  },
+  addBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    gap: 8,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  searchInputWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#0f172a',
+    padding: 0,
+  },
+  clearBtn: {
+    padding: 4,
+  },
+  searchButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#6366f1',
+    borderRadius: 10,
+  },
+  searchButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
   },
   scrollView: {
     flex: 1,
@@ -272,82 +438,122 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 16,
   },
+  listContainer: {
+    paddingVertical: 12,
+    paddingBottom: 100,
+  },
+  emptyContainer: {
+    flexGrow: 1,
+  },
   loader: {
     marginVertical: 20,
   },
   employeeCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
+    marginHorizontal: 16,
     marginBottom: 12,
     borderWidth: 1,
     borderColor: '#e2e8f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
   },
   employeeRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  avatarContainer: {
+    position: 'relative',
     marginRight: 12,
   },
+  avatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+  },
   avatarPlaceholder: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: '#e0e7ff',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
   },
   avatarText: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
     color: '#6366f1',
+  },
+  onlineIndicator: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#22c55e',
+    borderWidth: 2,
+    borderColor: '#fff',
   },
   employeeInfo: {
     flex: 1,
   },
   employeeName: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: '#0f172a',
-    marginBottom: 2,
+    marginBottom: 4,
   },
   employeeRole: {
     fontSize: 13,
-    color: '#64748b',
+    fontWeight: '600',
+    color: '#6366f1',
+    marginBottom: 2,
+  },
+  employeeEmail: {
+    fontSize: 12,
+    color: '#94a3b8',
   },
   manageBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    gap: 4,
-  },
-  manageBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-  emptyState: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: '#eef2ff',
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
     paddingVertical: 60,
   },
-  emptyText: {
-    fontSize: 15,
-    color: '#94a3b8',
-    marginTop: 12,
+  emptyIconContainer: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
   },
-  bottomSpacer: {
-    height: 100,
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: '#94a3b8',
+    textAlign: 'center',
+    lineHeight: 20,
   },
   modalScreen: {
     flex: 1,

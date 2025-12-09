@@ -276,15 +276,13 @@ const AdminHome: React.FC = () => {
 
           <Pressable
             style={styles.adminCard}
-            onPress={() =>
-              Alert.alert('Analytics', 'Analytics feature coming soon!')
-            }
+            onPress={() => navigation.navigate('Analytics')}
           >
             <View
               style={[
                 styles.adminIconContainer,
                 { backgroundColor: '#dbeafe' },
-              ]} 
+              ]}
             >
               <Icon name="bar-chart-2" size={24} color="#3b82f6" />
             </View>

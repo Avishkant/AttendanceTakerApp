@@ -143,7 +143,14 @@ const HomeScreen: React.FC = () => {
       const res = await api.post('/api/attendance/mark', { type });
       if (res?.data?.success) {
         showToast('success', `Marked ${type.toUpperCase()} successfully`);
+        // Force reload by resetting the loading ref
+        loadingRef.current = false;
         await loadRecent();
+        // Reload again after a short delay to ensure server has processed
+        setTimeout(() => {
+          loadingRef.current = false;
+          loadRecent();
+        }, 500);
       } else if (res?.status === 422 || res?.data?.status === 422) {
         showToast('info', res?.data?.message || 'Business rule error');
       } else
@@ -263,49 +270,59 @@ const HomeScreen: React.FC = () => {
     const asc = getAsc(records || []);
     let worked = 0;
     let currentIn: number | null = null;
+    let currentInRecord: RecordItem | null = null;
 
     for (const r of asc) {
       const ts = new Date(r.timestamp).getTime();
       if (r.type === 'in') {
         currentIn = ts;
-        // Subtract any completed breaks within this check-in session
-        if (r.breaks) {
-          for (const brk of r.breaks) {
-            if (brk.end) {
-              const breakDuration =
-                new Date(brk.end).getTime() - new Date(brk.start).getTime();
-              worked -= breakDuration;
+        currentInRecord = r;
+      } else if (r.type === 'out') {
+        if (currentIn !== null && currentInRecord !== null) {
+          // Calculate session duration
+          let sessionDuration = Math.max(0, ts - currentIn);
+
+          // Subtract breaks from this completed session
+          if (currentInRecord.breaks && Array.isArray(currentInRecord.breaks)) {
+            for (const brk of currentInRecord.breaks) {
+              if (brk.start && brk.end) {
+                const breakDuration =
+                  new Date(brk.end).getTime() - new Date(brk.start).getTime();
+                sessionDuration -= breakDuration;
+              }
             }
           }
-        }
-      } else if (r.type === 'out') {
-        if (currentIn !== null) {
-          worked += Math.max(0, ts - currentIn);
+
+          worked += Math.max(0, sessionDuration);
           currentIn = null;
+          currentInRecord = null;
         }
       }
     }
 
-    // currently checked in -> add running time
+    // currently checked in -> add running time minus breaks
     if (currentIn !== null) {
       const now = Date.now();
-      worked += now - currentIn;
+      let currentSessionTime = now - currentIn;
 
-      // Subtract completed breaks from current session
+      // Subtract all breaks from current session
       const lastRecord = asc[asc.length - 1];
       if (lastRecord?.breaks) {
         for (const brk of lastRecord.breaks) {
           if (brk.end) {
+            // Completed break - subtract duration
             const breakDuration =
               new Date(brk.end).getTime() - new Date(brk.start).getTime();
-            worked -= breakDuration;
+            currentSessionTime -= breakDuration;
           } else {
             // Currently on break - subtract time since break started
             const breakStart = new Date(brk.start).getTime();
-            worked -= now - breakStart;
+            currentSessionTime -= now - breakStart;
           }
         }
       }
+
+      worked += Math.max(0, currentSessionTime);
     }
     return Math.max(0, worked);
   };
@@ -388,26 +405,39 @@ const HomeScreen: React.FC = () => {
 
   return (
     <View style={styles.screen}>
-      {/* Modern Gradient Header */}
+      {/* Modern CRED-Inspired Header */}
       <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <View>
-            <Text style={styles.greeting}>Good {getGreeting()}</Text>
-            <Text style={styles.welcome}>{user?.name || 'Employee'}</Text>
+        <View style={styles.headerGlow} />
+        <View style={styles.headerContent}>
+          <View style={styles.headerTop}>
+            <View style={styles.userInfo}>
+              <View style={styles.avatarContainer}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>
+                    {user?.name?.charAt(0)?.toUpperCase() || 'E'}
+                  </Text>
+                </View>
+                <View style={styles.statusIndicator} />
+              </View>
+              <View>
+                <Text style={styles.greeting}>Good {getGreeting()}</Text>
+                <Text style={styles.welcome}>{user?.name || 'Employee'}</Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Logout"
+              onPress={() => signOut()}
+              style={styles.headerIcon}
+            >
+              <Icon name="log-out" size={20} color="#fff" />
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            accessibilityRole="button"
-            accessibilityLabel="Logout"
-            onPress={() => signOut()}
-            style={styles.headerIcon}
-          >
-            <Icon name="log-out" size={22} color="#fff" />
-          </TouchableOpacity>
-        </View>
 
-        <View style={styles.dateRow}>
-          <Icon name="calendar" size={16} color="rgba(255,255,255,0.9)" />
-          <Text style={styles.dateText}>{formatDate()}</Text>
+          <View style={styles.dateCard}>
+            <Icon name="calendar" size={16} color="#6366f1" />
+            <Text style={styles.dateText}>{formatDate()}</Text>
+          </View>
         </View>
       </View>
 
@@ -531,7 +561,12 @@ const HomeScreen: React.FC = () => {
         <View style={styles.quickActions}>
           <TouchableOpacity
             style={styles.quickActionBtn}
-            onPress={() => navigation.navigate('Requests')}
+            onPress={() =>
+              showToast(
+                'info',
+                '🚀 Coming Soon! Request Leave feature will be available soon.',
+              )
+            }
           >
             <Icon name="file-text" size={20} color="#6366f1" />
             <Text style={styles.quickActionText}>Request Leave</Text>
@@ -656,51 +691,111 @@ const styles = StyleSheet.create({
     backgroundColor: '#6366f1',
     paddingTop: 48,
     paddingHorizontal: 20,
-    paddingBottom: 24,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+    paddingBottom: 32,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  headerGlow: {
+    position: 'absolute',
+    top: -50,
+    right: -50,
+    width: 200,
+    height: 200,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 100,
+  },
+  headerContent: {
+    position: 'relative',
+    zIndex: 1,
   },
   headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  userInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  avatarContainer: {
+    position: 'relative',
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  avatarText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  statusIndicator: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#10b981',
+    borderWidth: 2,
+    borderColor: '#6366f1',
+  },
   greeting: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 14,
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 13,
     fontWeight: '500',
+    letterSpacing: 0.3,
   },
   welcome: {
     color: '#fff',
-    fontSize: 24,
-    fontWeight: '800',
-    marginTop: 4,
+    fontSize: 22,
+    fontWeight: '700',
+    marginTop: 2,
   },
   headerIcon: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 22,
   },
-  dateRow: {
+  dateCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: 20,
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 16,
     gap: 8,
+    alignSelf: 'flex-start',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
   dateText: {
-    color: 'rgba(255,255,255,0.9)',
+    color: '#0f172a',
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
   },
 
   contentWrap: {
     padding: 20,
     paddingTop: 0,
     paddingBottom: 100,
-    marginTop: -20,
+    marginTop: -24,
   },
 
   statusCard: {
