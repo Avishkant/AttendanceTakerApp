@@ -74,7 +74,14 @@ const ProfileScreen: React.FC = () => {
         {
           text: 'Logout',
           style: 'destructive',
-          onPress: () => signOut(),
+          onPress: async () => {
+            try {
+              await signOut();
+            } catch (error) {
+              console.error('Logout error:', error);
+              Alert.alert('Error', 'Failed to logout. Please try again.');
+            }
+          },
         },
       ],
       { cancelable: true },

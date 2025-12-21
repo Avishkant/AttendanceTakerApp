@@ -1,3 +1,21 @@
+# Node / React Native
+node_modules/
+ios/Pods/
+android/.gradle/
+android/app/build/
+
+# Ignore APKs and common build artifacts
+*.apk
+**/app-release.apk
+**/app-debug*.apk
+
+# Keystores
+*.keystore
+
+# Misc
+.DS_Store
+dist/
+build/
 # OSX
 #
 .DS_Store
@@ -24,8 +42,6 @@ DerivedData
 
 # Android/IntelliJ
 #
-.env
-env
 build/
 .idea
 .gradle
@@ -36,12 +52,6 @@ local.properties
 *.keystore
 !debug.keystore
 .kotlin/
-
-# APK files (too large for Git)
-*.apk
-*.aab
-apk-output/*.apk
-android/app/build/outputs/
 
 # node.js
 #
@@ -81,6 +91,3 @@ yarn-error.log
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
-
-/.env
-apk-output

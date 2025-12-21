@@ -121,10 +121,11 @@ android {
     }
 
     // Split APKs by ABI to reduce size (each device only needs one ABI)
+    // Note: Splits are disabled for bundle builds (AAB)
     splits {
         abi {
             reset()
-            enable true
+            enable !gradle.startParameter.taskNames.any { it.contains("bundle") || it.contains("Bundle") }
             universalApk false  // Set to true if you want a universal APK
             include "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
         }
